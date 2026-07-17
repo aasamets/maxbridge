@@ -1,0 +1,87 @@
+x-python: &python-base
+  build: .
+  env_file: .env
+  volumes:
+    - maxbridge_data:/data
+    - maxbridge_sessions:/sessions
+  networks:
+    - internal
+  restart: unless-stopped
+
+services:
+  core:
+    <<: *python-base
+    command: uvicorn core.main:app --host 0.0.0.0 --port 8000
+    ports: []
+    depends_on: []
+
+  telegram:
+    <<: *python-base
+    command: uvicorn adapters.telegram_adapter:app --host 0.0.0.0 --port 9001
+    environment:
+      CORE_URL: http://core:8000
+      ADAPTER_NAME: telegram
+    depends_on:
+      - core
+      - xray
+
+  max:
+    <<: *python-base
+    command: uvicorn adapters.max_adapter:app --host 0.0.0.0 --port 9002
+    environment:
+      CORE_URL: http://core:8000
+      ADAPTER_NAME: max
+    depends_on:
+      - core
+
+  wa:
+    build: ./wa_adapter
+    env_file: .env
+    environment:
+      CORE_URL: http://core:8000
+      ADAPTER_NAME: whatsapp
+      SESSION_DIR: /sessions/wa
+      WA_PROXY_HOST: ${WA_PROXY_HOST:-xray}
+      WA_PROXY_PORT: ${WA_PROXY_PORT:-1080}
+    volumes:
+      - maxbridge_sessions:/sessions
+    networks:
+      - internal
+    depends_on:
+      - core
+      - xray
+    restart: unless-stopped
+
+  xray:
+    image: ghcr.io/xtls/xray-core:latest
+    command: run -config /etc/xray/config.json
+    volumes:
+      - ./xray/config.json:/etc/xray/config.json:ro
+    networks:
+      - internal
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - internal
+    depends_on:
+      - core
+    restart: unless-stopped
+
+volumes:
+  maxbridge_data:
+  maxbridge_sessions:
+  caddy_data:
+  caddy_config:
+
+networks:
+  internal:
+    driver: bridge

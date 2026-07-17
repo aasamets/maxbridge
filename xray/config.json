@@ -1,0 +1,42 @@
+{
+  "log": { "loglevel": "warning" },
+  "inbounds": [
+    {
+      "protocol": "socks",
+      "port": 1080,
+      "listen": "0.0.0.0",
+      "settings": { "auth": "noauth", "udp": true }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "vless",
+      "settings": {
+        "vnext": [
+          {
+            "address": "XRAY_ADDRESS",
+            "port": 443,
+            "users": [
+              {
+                "id":         "XRAY_UUID",
+                "flow":       "xtls-rprx-vision",
+                "encryption": "none"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "serverName":  "github.com",
+          "fingerprint": "firefox",
+          "publicKey":   "XRAY_PUBLIC_KEY",
+          "shortId":     "XRAY_SHORT_ID",
+          "spiderX":     "/"
+        }
+      }
+    }
+  ]
+}
