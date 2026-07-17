@@ -1,0 +1,30 @@
+# ── Секреты и конфигурация (НИКОГДА не коммитить) ──
+.env
+*.env
+!.env.example
+Caddyfile
+
+# ── Состояние выполнения (сессии мессенджеров, БД) ──
+data/
+*.session
+*.session-journal
+
+# ── Python ──
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# ── Node (WhatsApp адаптер на Baileys) ──
+node_modules/
+npm-debug.log*
+wa_adapter/node_modules/
+
+# ── ОС / редактор ──
+.DS_Store
+.vscode/
+.idea/
+*.swp

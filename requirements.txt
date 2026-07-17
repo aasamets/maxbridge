@@ -1,0 +1,19 @@
+# ── Ядро ──────────────────────────────────────────────────────
+fastapi>=0.110
+uvicorn[standard]>=0.29
+httpx[socks]>=0.27
+python-dotenv>=1.0
+python-multipart>=0.0.9
+aiofiles>=23.0
+
+# ── Адаптер Telegram ──────────────────────────────────────────
+telethon>=1.36
+qrcode>=7.4
+pillow>=10.0
+PySocks>=1.7.1
+
+# ── Адаптер MAX ───────────────────────────────────────────────
+aiohttp>=3.9
+
+# ── WhatsApp (Node/Baileys — ставится отдельно в wa_adapter/) ─
+# npm install  —  см. wa_adapter/package.json

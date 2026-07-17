@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MaxBridge — Вход</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .login-wrap {
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--bg);
+    }
+    .login-card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 36px 28px 28px;
+      width: 100%; max-width: 360px;
+    }
+    .login-logo {
+      text-align: center; margin-bottom: 28px;
+    }
+    .login-logo .logo-icon { font-size: 36px; display: block; margin-bottom: 6px; }
+    .login-logo .logo-text { font-size: 20px; font-weight: 700; letter-spacing: -.3px; }
+    .login-form { display: flex; flex-direction: column; gap: 12px; }
+    .login-tagline {
+      display: block; margin-top: 6px;
+      font-size: 13px; color: var(--text-2);
+    }
+    .login-error {
+      font-size: 13px; color: var(--red);
+      text-align: center; min-height: 20px;
+    }
+    .login-footer {
+      margin-top: 20px; text-align: center;
+      font-size: 12px; color: var(--text-3);
+    }
+    .login-footer a { color: var(--text-3); text-decoration: none; }
+    .login-footer a:hover { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="login-logo">
+        <span class="logo-icon">⬡</span>
+        <span class="logo-text">MaxBridge</span>
+        <span class="login-tagline">Коннектор мессенджеров → Битрикс24</span>
+      </div>
+      <form class="login-form" method="POST" action="/login">
+        <input class="input" name="username" type="text"
+               placeholder="Логин" autocomplete="username" autofocus required>
+        <input class="input" name="password" type="password"
+               placeholder="Пароль" autocomplete="current-password" required>
+        <button class="btn btn-primary" type="submit">Войти</button>
+        <div class="login-error" id="err"></div>
+      </form>
+      <div class="login-footer">
+        <span>v0.2.0</span>
+        <span class="footer-sep">·</span>
+        <span>by <a href="https://t.me/aasamets_a" target="_blank" rel="noopener">@aasamets_a</a></span>
+      </div>
+    </div>
+  </div>
+  <script>
+    if (new URLSearchParams(location.search).get('error'))
+      document.getElementById('err').textContent = 'Неверный логин или пароль';
+  </script>
+</body>
+</html>

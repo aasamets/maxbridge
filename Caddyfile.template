@@ -1,0 +1,14 @@
+# Генерируется install.sh из этого шаблона → Caddyfile (в .gitignore).
+# Плейсхолдер: __DOMAIN__
+
+__DOMAIN__ {
+
+    reverse_proxy core:8000
+
+    log {
+        output file /data/caddy_access.log {
+            roll_size 10mb
+            roll_keep 3
+        }
+    }
+}

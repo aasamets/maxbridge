@@ -1,0 +1,223 @@
+/* Apple-style: system fonts, clean whites, subtle shadows */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:          #f2f2f7;
+  --surface:     #ffffff;
+  --surface2:    #f9f9fb;
+  --text:        #000000;
+  --text-2:      #6b6b80;
+  --text-3:      #aeaeb2;
+  --accent:      #007AFF;
+  --green:       #34c759;
+  --yellow:      #ff9f0a;
+  --red:         #ff3b30;
+  --gray:        #c7c7cc;
+  --border:      rgba(0,0,0,.08);
+  --shadow:      0 2px 12px rgba(0,0,0,.07);
+  --radius:      16px;
+  --radius-sm:   10px;
+  --wa-color:    #25d366;
+  --max-color:   #0077ff;
+  --tg-color:    #2aabee;
+  --b24-color:   #fc5a5a;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Layout ─────────────────────────────────────────────────── */
+
+.app { min-height: 100vh; display: flex; flex-direction: column; }
+
+.header {
+  background: rgba(255,255,255,.8);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 100;
+}
+
+.header-inner {
+  max-width: 760px; margin: 0 auto;
+  padding: 14px 20px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+
+.logo { display: flex; align-items: center; gap: 10px; }
+.logo-icon { font-size: 22px; }
+.logo-text { font-size: 17px; font-weight: 600; letter-spacing: -.3px; }
+
+.main { max-width: 760px; margin: 0 auto; padding: 28px 20px 60px; width: 100%; }
+
+.section { margin-bottom: 32px; }
+.section-title {
+  font-size: 13px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .5px; color: var(--text-2);
+  margin-bottom: 12px; padding-left: 4px;
+}
+
+/* ── Cards ──────────────────────────────────────────────────── */
+
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+
+.card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  transition: box-shadow .2s;
+}
+.card:hover { box-shadow: 0 4px 20px rgba(0,0,0,.1); }
+
+.card-bitrix { grid-column: 1 / -1; }
+
+.card-header {
+  display: flex; align-items: center; gap: 14px;
+  padding: 18px 18px 14px;
+}
+
+.card-icon {
+  width: 44px; height: 44px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; color: #fff;
+}
+.card-icon svg { width: 22px; height: 22px; }
+.wa-icon  { background: var(--wa-color); }
+.max-icon { background: var(--max-color); }
+.tg-icon  { background: var(--tg-color); }
+.b24-icon {
+  background: var(--b24-color); font-weight: 700;
+  font-size: 13px; letter-spacing: -.3px;
+}
+
+.card-name { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+
+.status-row { display: flex; align-items: center; gap: 6px; }
+
+.status-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--gray); flex-shrink: 0;
+  transition: background .3s;
+}
+.status-dot.green  { background: var(--green); box-shadow: 0 0 0 3px rgba(52,199,89,.15); }
+.status-dot.yellow { background: var(--yellow); box-shadow: 0 0 0 3px rgba(255,159,10,.15); }
+.status-dot.red    { background: var(--red); }
+
+.status-label { font-size: 13px; color: var(--text-2); }
+
+.card-body { padding: 0 18px 18px; }
+
+.card-footer {
+  padding: 14px 18px 18px;
+  border-top: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px;
+}
+
+/* ── QR-код ─────────────────────────────────────────────────── */
+
+.qr-wrap {
+  display: flex; justify-content: center;
+  margin: 4px 0 14px;
+}
+.qr-wrap img {
+  width: 180px; height: 180px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+/* ── Форма входа ─────────────────────────────────────────────── */
+
+.auth-form { display: flex; flex-direction: column; gap: 10px; }
+.auth-form label { font-size: 13px; color: var(--text-2); }
+
+.input {
+  width: 100%; padding: 10px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 15px; font-family: inherit;
+  background: var(--surface2);
+  outline: none; transition: border-color .2s;
+}
+.input:focus { border-color: var(--accent); background: #fff; }
+
+/* ── Кнопки ─────────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 10px 18px; border-radius: var(--radius-sm);
+  font-size: 15px; font-weight: 500; font-family: inherit;
+  border: none; cursor: pointer; transition: opacity .15s, transform .1s;
+}
+.btn:active { transform: scale(.97); }
+
+.btn-primary   { background: var(--accent); color: #fff; }
+.btn-secondary { background: var(--surface2); color: var(--accent); border: 1.5px solid var(--border); }
+.btn-ghost     { background: transparent; color: var(--accent); font-size: 15px; font-weight: 500; font-family: inherit; border: none; cursor: pointer; }
+.btn-danger    { background: var(--red); color: #fff; }
+.btn-sm        { padding: 7px 14px; font-size: 13px; }
+
+/* ── Настройки ──────────────────────────────────────────────── */
+
+.settings-form { padding: 18px 18px 0; display: flex; flex-direction: column; gap: 14px; }
+
+.setting-group { display: flex; flex-direction: column; gap: 4px; }
+.setting-group label { font-size: 13px; font-weight: 500; color: var(--text-2); }
+.setting-group .hint { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+
+.settings-note { font-size: 13px; color: var(--text-2); }
+
+/* ── Спиннер / сообщения ────────────────────────────────────── */
+
+.spinner { color: var(--text-3); font-size: 13px; padding: 8px 0; }
+.msg-info    { font-size: 13px; color: var(--text-2); padding: 6px 0; }
+.msg-success { font-size: 13px; color: var(--green); padding: 6px 0; }
+.msg-error   { font-size: 13px; color: var(--red); padding: 6px 0; }
+
+/* ── Toast ──────────────────────────────────────────────────── */
+
+.toast {
+  position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+  background: rgba(0,0,0,.85); color: #fff;
+  padding: 12px 20px; border-radius: 100px;
+  font-size: 14px; z-index: 999;
+  opacity: 0; transition: opacity .2s;
+  pointer-events: none; white-space: nowrap;
+}
+.toast.show { opacity: 1; }
+
+/* ── Connected state ─────────────────────────────────────────── */
+
+.connected-state {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 0;
+}
+.connected-check { font-size: 20px; }
+.connected-text { font-size: 14px; color: var(--text-2); flex: 1; }
+
+/* ── Footer ─────────────────────────────────────────────────── */
+
+.footer {
+  text-align: center;
+  padding: 20px;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.footer-sep { margin: 0 6px; }
+.footer a { color: var(--text-3); text-decoration: none; }
+.footer a:hover { color: var(--accent); }
+
+/* ── Responsive ─────────────────────────────────────────────── */
+
+@media (max-width: 480px) {
+  .cards { grid-template-columns: 1fr; }
+  .header-inner { padding: 12px 16px; }
+  .main { padding: 20px 16px 60px; }
+}
