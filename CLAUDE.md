@@ -29,12 +29,12 @@
 
 ## Порядок ввода каналов
 
-1. **WhatsApp** (Baileys, Node) или **MAX** (приоритет бизнеса) — начинаем с того, что проще;
-   прокси не нужен. На первом канале проверяем всю петлю.
-2. Второй из пары MAX/WhatsApp.
+1. **WhatsApp** (Baileys, Node) — напрямую, без прокси (не заблокирован в РФ). QR в веб-морде.
+2. **MAX** (GREEN-API, Python) — через managed-шлюз green-api.com/max. Авторизация: QR в кабинете
+   GREEN-API, затем `GREENAPI_ID_INSTANCE` + `GREENAPI_TOKEN` в `.env`. ~690 ₽/мес после бесплатного теста.
 3. **Telegram — последним:** заблокирован в РФ, нужен прокси. Трафик адаптера идёт через
-   локальный Xray-клиент (SOCKS5 `127.0.0.1:1080`) → VLESS-Reality → заграничный сервер.
-   Telethon понимает SOCKS5/MTProxy, но не VLESS напрямую — поэтому именно через Xray.
+   локальный Xray-клиент (SOCKS5 `xray:1080` в Docker) → VLESS-Reality → заграничный сервер.
+   Нужны `TG_API_ID` / `TG_API_HASH` от my.telegram.org (получить с российского IP через hosts-правило).
 
 ## Структура
 
@@ -42,12 +42,12 @@
 core/main.py            FastAPI: /incoming, /bitrix/events, веб-морда (статус, QR, вход)
 core/bitrix.py          клиент Битрикс24 (OAuth + imconnector)
 core/store.py           SQLite: маппинг чатов, дедуп, токены
-adapters/telegram_adapter.py  Telethon — рабочий референс
-adapters/max_adapter.py       скелет (доводится под либу/провайдера)
+adapters/telegram_adapter.py  Telethon — прокси xray:1080, qr_login, ждёт TG_API_ID/HASH
+adapters/max_adapter.py       GREEN-API клиент (max-api-client-python), polling
+adapters/wa_adapter/ (Node)   Baileys, напрямую без прокси
 install_connector.py    разовая регистрация коннектора + event.bind
-Caddyfile / nginx.conf  обратный прокси: HTTPS + Basic Auth
+Caddyfile / nginx.conf  обратный прокси: HTTPS + FastAPI session auth
 .env.example            шаблон конфигурации (реальный .env — только на сервере)
-PROJECT_PLAN.md         полный план проекта
 ```
 
 ## Инфраструктура (зафиксировано)
@@ -61,7 +61,7 @@ PROJECT_PLAN.md         полный план проекта
 ## Безопасность
 
 - Ядро и адаптеры слушают только `127.0.0.1`; наружу — только Caddy (443/80).
-- Веб-морда под Basic Auth (Caddy). `/bitrix/events` открыт, но проверяется `application_token`.
+- Веб-морда под FastAPI session auth (cookie `mb_session`, 8ч TTL). `/bitrix/events` и `/adapters/max/webhook` открыты; events проверяются `application_token`.
 - Xray (если Telegram) слушает SOCKS5 только на `127.0.0.1`.
 - `ufw`: открыты 22/80/443. SSH — по ключу, без пароля/root.
 
