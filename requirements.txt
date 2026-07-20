@@ -12,8 +12,8 @@ qrcode>=7.4
 pillow>=10.0
 PySocks>=1.7.1
 
-# ── Адаптер MAX ───────────────────────────────────────────────
-aiohttp>=3.9
+# ── Адаптер MAX (GREEN-API) ───────────────────────────────────
+max-api-client-python>=1.0
 
 # ── WhatsApp (Node/Baileys — ставится отдельно в wa_adapter/) ─
 # npm install  —  см. wa_adapter/package.json

@@ -2,6 +2,7 @@
 .env
 *.env
 !.env.example
+.claude/settings.local.json
 Caddyfile
 
 # ── Состояние выполнения (сессии мессенджеров, БД) ──

@@ -31,6 +31,9 @@ services:
     environment:
       CORE_URL: http://core:8000
       ADAPTER_NAME: max
+      GREENAPI_ID_INSTANCE: ${GREENAPI_ID_INSTANCE:-}
+      GREENAPI_TOKEN: ${GREENAPI_TOKEN:-}
+      GREENAPI_WEBHOOK_URL: ${GREENAPI_WEBHOOK_URL:-}
     depends_on:
       - core
 
@@ -41,7 +44,7 @@ services:
       CORE_URL: http://core:8000
       ADAPTER_NAME: whatsapp
       SESSION_DIR: /sessions/wa
-      WA_PROXY_HOST: ${WA_PROXY_HOST:-xray}
+      WA_PROXY_HOST: ${WA_PROXY_HOST:-}
       WA_PROXY_PORT: ${WA_PROXY_PORT:-1080}
     volumes:
       - maxbridge_sessions:/sessions
@@ -49,7 +52,6 @@ services:
       - internal
     depends_on:
       - core
-      - xray
     restart: unless-stopped
 
   xray:

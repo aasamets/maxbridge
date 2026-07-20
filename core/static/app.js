@@ -22,17 +22,36 @@ const STATE_DOT = {
   unknown:      '',
 };
 
-// ── Retry state ───────────────────────────────────────────────────────────────
+// ── State + timers ────────────────────────────────────────────────────────────
 
 const _lastState    = {};  // { adapter: state }
 const _pendingRetry = {};  // { adapter: { action, phone, startedAt } }
 const _retryTimers  = {};
+const _qrTimers     = {};  // QR auto-refresh timers
+
+function _startQrRefresh(adapter) {
+  clearInterval(_qrTimers[adapter]);
+  _qrTimers[adapter] = setInterval(() => {
+    const img = document.querySelector(`#body-${adapter} img`);
+    if (img) img.src = `/adapters/${adapter}/qr?t=${Date.now()}`;
+  }, 30000);
+}
+
+function _stopQrRefresh(adapter) {
+  clearInterval(_qrTimers[adapter]);
+  delete _qrTimers[adapter];
+}
 
 function _scheduleRetryRender(adapter) {
   clearTimeout(_retryTimers[adapter]);
   _retryTimers[adapter] = setTimeout(() => {
-    const st = _lastState[adapter];
-    if (st && st !== 'connected') updateCard(adapter, st);
+    const r = _pendingRetry[adapter];
+    if (!r) return;
+    const el = document.getElementById(`retry-${adapter}`);
+    if (el) {
+      el.innerHTML = `<p class="msg-info" style="margin-top:8px">Не пришёл код? <button class="btn btn-secondary btn-sm" onclick="retryAction('${adapter}')">Запросить повторно</button></p>`;
+    }
+    _scheduleRetryRender(adapter);
   }, 60000);
 }
 
@@ -46,15 +65,11 @@ function _clearRetry(adapter) {
   delete _pendingRetry[adapter];
 }
 
-function _retryBlock(adapter) {
-  const r = _pendingRetry[adapter];
-  if (!r || Date.now() - r.startedAt < 60000) return '';
-  return `<p class="msg-info" style="margin-top:8px">Не пришёл код? <button class="btn btn-secondary btn-sm" onclick="retryAction('${adapter}')">Запросить повторно</button></p>`;
-}
-
 async function retryAction(adapter) {
   const r = _pendingRetry[adapter];
   if (!r) return;
+  const el = document.getElementById(`retry-${adapter}`);
+  if (el) el.innerHTML = '<p class="msg-info">Отправляем код повторно…</p>';
   r.startedAt = Date.now();
   _scheduleRetryRender(adapter);
   if (r.action === 'phone') {
@@ -93,7 +108,11 @@ const SERVICE_NAME = { whatsapp: 'wa', max: 'max', telegram: 'telegram' };
 function updateCard(name, state) {
   const prev = _lastState[name];
   _lastState[name] = state;
-  if (state === 'connected') _clearRetry(name);
+
+  if (state === 'connected') {
+    _clearRetry(name);
+    _stopQrRefresh(name);
+  }
 
   const dot   = document.getElementById(`dot-${name}`);
   const label = document.getElementById(`label-${name}`);
@@ -106,6 +125,12 @@ function updateCard(name, state) {
   // Перерисовываем body только при смене состояния — иначе сбрасываются поля ввода
   if (state !== prev) {
     body.innerHTML = renderBody(name, state);
+    // Запустить авто-обновление QR для каналов с QR-авторизацией
+    if (state === 'needs_auth' && (name === 'whatsapp' || name === 'telegram')) {
+      _startQrRefresh(name);
+    } else {
+      _stopQrRefresh(name);
+    }
   }
 }
 
@@ -137,13 +162,17 @@ function renderBody(name, state) {
     }
   }
 
-  // MAX — телефон + код
+  // MAX (GREEN-API)
   if (name === 'max') {
     if (state === 'needs_auth') {
-      return `<div class="auth-form">
-        <p class="msg-info">Введите номер телефона аккаунта MAX</p>
-        <input class="input" id="max-phone" type="tel" placeholder="+79990000000" autocomplete="tel">
-        <button class="btn btn-primary" onclick="sendPhone('max')">Получить код</button>
+      return `<div>
+        <p class="msg-info">Авторизуйте номер MAX в кабинете
+          <a href="https://green-api.com/max" target="_blank" rel="noopener">green-api.com/max</a>
+          и укажите <strong>ID инстанса</strong> и <strong>Токен</strong> в Настройках ниже.
+        </p>
+        <p class="msg-info" style="margin-top:6px">После сохранения нажмите
+          <button class="btn btn-secondary btn-sm" onclick="restartAdapter('max')">Переподключить MAX</button>
+        </p>
       </div>`;
     }
     if (state === 'needs_code') {
@@ -151,7 +180,7 @@ function renderBody(name, state) {
         <p class="msg-info">Введите код из SMS</p>
         <input class="input" id="max-code" type="text" placeholder="12345" inputmode="numeric">
         <button class="btn btn-primary" onclick="sendCode('max')">Войти</button>
-        ${_retryBlock(name)}
+        <div id="retry-max"></div>
       </div>`;
     }
   }
@@ -170,7 +199,7 @@ function renderBody(name, state) {
         <p class="msg-info">Введите код из SMS или Telegram-уведомления</p>
         <input class="input" id="telegram-code" type="text" placeholder="12345" inputmode="numeric">
         <button class="btn btn-primary" onclick="sendCode('telegram')">Войти</button>
-        ${_retryBlock(name)}
+        <div id="retry-telegram"></div>
       </div>`;
     }
     if (state === 'needs_password') {
@@ -218,6 +247,11 @@ async function disconnectAdapter(adapter) {
   if (!confirm(`Отключить ${adapter}? Сессия будет удалена.`)) return;
   const res = await post(`/adapters/${adapter}/logout`, {});
   toast(res.ok ? 'Отключено' : 'Ошибка при отключении');
+}
+
+async function restartAdapter(adapter) {
+  const res = await post(`/adapters/${adapter}/reconnect`, {});
+  toast(res.ok ? 'Переподключение запущено' : 'Ошибка: ' + (res.error || 'неизвестная'));
 }
 
 function refreshQR(adapter) {
@@ -288,10 +322,15 @@ function renderSettingsForm(s) {
     ${secret('B24_CLIENT_SECRET','Ключ приложения (client_secret)', '*** = не менять; вставьте новый чтобы обновить')}
     ${field('B24_LINE_ID',      'ID Открытой линии',        'число из URL линии')}
 
-    <h3 style="font-size:13px;font-weight:600;color:var(--text-2);margin:8px 0 4px">Каналы</h3>
+    <h3 style="font-size:13px;font-weight:600;color:var(--text-2);margin:8px 0 4px">Telegram</h3>
     ${field('TG_API_ID',   'Telegram API ID',   'my.telegram.org → API development tools')}
     ${field('TG_API_HASH', 'Telegram API Hash', '')}
     ${field('VLESS_URL',   'VLESS-ссылка (прокси Telegram)', 'vless://...')}
+
+    <h3 style="font-size:13px;font-weight:600;color:var(--text-2);margin:8px 0 4px">MAX (GREEN-API)</h3>
+    ${field('GREENAPI_ID_INSTANCE', 'ID инстанса', 'из кабинета green-api.com/max')}
+    ${secret('GREENAPI_TOKEN',      'Токен инстанса', '*** = не менять')}
+    ${field('GREENAPI_WEBHOOK_URL', 'URL вебхука', 'https://ваш-домен.ru/adapters/max/webhook')}
 
     <h3 style="font-size:13px;font-weight:600;color:var(--text-2);margin:8px 0 4px">Общие</h3>
     ${field('PUBLIC_URL',  'Публичный URL', '')}

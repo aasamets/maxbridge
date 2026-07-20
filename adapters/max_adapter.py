@@ -1,232 +1,211 @@
 """
-Адаптер MAX (userbot).
+MAX адаптер через GREEN-API (green-api.com/max).
 
-MAX — мессенджер VK/Mail.ru Group. Официального Python userbot API нет.
-Реализация работает через HTTP-сессию к мобильному API MAX.
-
-ВАЖНО: если авторизация не проходит после ввода кода — значит MAX изменил
-протокол. В этом случае выставляй MAX_STUB=true в .env, чтобы адаптер
-симулировал подключение для тестирования UI (реальные сообщения ходить не будут).
+Авторизация MAX-аккаунта — один раз в кабинете GREEN-API по QR.
+Адаптер подключается к GREEN-API по REST, получает сообщения через polling.
 
 Контракт:
-  GET  /status    → {"state": "connected|needs_auth|needs_code"}
-  POST /login     → form: phone
-  POST /code      → form: code
-  POST /password  → form: password (MAX 2FA практически не встречается)
-  POST /send      → json: {peer_id, text}
-  POST /logout    → сбросить сессию
+  GET  /status              → {"state": "connected|needs_auth|unavailable"}
+  POST /webhook             → вебхук GREEN-API (альтернатива polling)
+  POST /send                → json: {peer_id, text}
+  POST /reconnect           → перепроверить подключение
+  POST /login|code|password|logout  → stub для совместимости с UI
+
+Переменные окружения:
+  GREENAPI_ID_INSTANCE  — idInstance из кабинета GREEN-API
+  GREENAPI_TOKEN        — apiTokenInstance из кабинета GREEN-API
+  CORE_URL              — адрес ядра (default: http://core:8000)
+  ADAPTER_NAME          — имя адаптера (default: max)
 
 Запуск:
   uvicorn adapters.max_adapter:app --host 0.0.0.0 --port 9002
 """
 
 import asyncio
-import json
 import os
-import time
-import uuid
-from pathlib import Path
 
-import aiohttp
 import httpx
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 CORE_URL     = os.environ.get("CORE_URL", "http://core:8000").rstrip("/")
 ADAPTER_NAME = os.environ.get("ADAPTER_NAME", "max")
-SESSION_FILE = os.environ.get("MAX_SESSION_FILE", "/sessions/max.session")
-STUB_MODE    = os.environ.get("MAX_STUB", "false").lower() == "true"
-
-# MAX API базовые URL (на основе публично известной информации о Mail.ru API)
-_AUTH_URL = "https://auth.mail.ru/cgi-bin/auth"
-_API_URL  = "https://agent.mail.ru/api/v1"
+ID_INSTANCE  = os.environ.get("GREENAPI_ID_INSTANCE", "").strip()
+API_TOKEN    = os.environ.get("GREENAPI_TOKEN", "").strip()
 
 app = FastAPI()
 
-# Состояние адаптера
-_state: dict = {
-    "stage":    "needs_auth",
-    "phone":    None,
-    "token":    None,
-    "session":  None,
-}
+_state: str = "needs_auth"
+_greenapi = None
+_event_loop: asyncio.AbstractEventLoop | None = None
+_polling_active: bool = False
 
 
-def _load_session() -> None:
-    try:
-        data = json.loads(Path(SESSION_FILE).read_text())
-        _state.update(data)
-        _state["stage"] = "connected" if _state.get("token") else "needs_auth"
-    except (FileNotFoundError, json.JSONDecodeError):
-        pass
+def _configured() -> bool:
+    return bool(ID_INSTANCE and API_TOKEN)
 
 
-def _save_session() -> None:
-    p = Path(SESSION_FILE)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps({
-        "stage": _state["stage"],
-        "phone": _state["phone"],
-        "token": _state["token"],
-    }))
+def _make_client():
+    from max_api_client_python import API  # noqa: PLC0415
+    return API.GreenAPI(ID_INSTANCE, API_TOKEN)
 
 
-async def _push_incoming(peer_id: str, msg_id: str, text: str,
-                         name: str | None, phone: str | None) -> None:
-    async with httpx.AsyncClient(timeout=20) as cli:
+async def _push_incoming(body: dict) -> None:
+    sender   = body.get("senderData", {})
+    msg_data = body.get("messageData", {})
+
+    chat_id = sender.get("chatId", "")
+    msg_id  = body.get("idMessage", "")
+    name    = sender.get("chatName") or sender.get("senderName", "")
+    phone   = chat_id.split("@")[0] if "@" in chat_id else None
+
+    type_msg = msg_data.get("typeMessage", "")
+    text = ""
+    if type_msg == "textMessage":
+        text = msg_data.get("textMessageData", {}).get("textMessage", "")
+    elif type_msg == "extendedTextMessage":
+        text = msg_data.get("extendedTextMessageData", {}).get("text", "")
+
+    if not chat_id:
+        return
+
+    async with httpx.AsyncClient(timeout=10) as cli:
         await cli.post(f"{CORE_URL}/incoming", json={
-            "adapter":  ADAPTER_NAME,
-            "peer_id":  str(peer_id),
-            "msg_id":   str(msg_id),
-            "text":     text or "",
-            "name":     name,
-            "phone":    phone,
+            "adapter": ADAPTER_NAME,
+            "peer_id": chat_id,
+            "msg_id":  msg_id,
+            "text":    text,
+            "name":    name,
+            "phone":   phone,
         })
 
 
-async def _poll_messages() -> None:
-    """Длинное опрашивание входящих сообщений MAX."""
+def _sync_handler(type_webhook: str, body: dict) -> None:
+    """Синхронный обработчик, вызываемый из потока polling."""
+    if type_webhook == "incomingMessageReceived" and _event_loop:
+        asyncio.run_coroutine_threadsafe(_push_incoming(body), _event_loop)
+
+
+async def _start_polling() -> None:
+    global _state, _greenapi, _event_loop, _polling_active
+
+    _event_loop = asyncio.get_event_loop()
+    try:
+        _greenapi = _make_client()
+
+        # Проверяем состояние инстанса
+        state_resp = await asyncio.to_thread(lambda: _greenapi.account.getStateInstance())
+        instance_state = (state_resp.data or {}).get("stateInstance", "")
+
+        if instance_state != "authorized":
+            _state = "needs_auth"
+            return
+
+        _state = "connected"
+        _polling_active = True
+
+        # Blocking poll — завершится когда stopReceivingNotifications будет вызван
+        await asyncio.to_thread(
+            _greenapi.webhooks.startReceivingNotifications, _sync_handler
+        )
+    except Exception:
+        _state = "unavailable"
+    finally:
+        _polling_active = False
+
+
+async def _supervisor() -> None:
+    """Перезапускает polling при падении или после logout."""
     while True:
-        if _state["stage"] != "connected" or not _state.get("token"):
-            await asyncio.sleep(5)
-            continue
-        try:
-            async with aiohttp.ClientSession() as session:
-                headers = {"Authorization": f"Bearer {_state['token']}"}
-                # MAX использует long-polling или WebSocket — здесь short poll
-                async with session.get(
-                    f"{_API_URL}/messages/unread",
-                    headers=headers, timeout=aiohttp.ClientTimeout(total=30)
-                ) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        for msg in data.get("messages", []):
-                            await _push_incoming(
-                                peer_id=str(msg.get("from_id", "")),
-                                msg_id=str(msg.get("id", str(time.time()))),
-                                text=msg.get("text", ""),
-                                name=msg.get("from_name"),
-                                phone=msg.get("from_phone"),
-                            )
-                    elif resp.status == 401:
-                        _state["stage"] = "needs_auth"
-                        _state["token"] = None
-        except Exception:
-            pass
-        await asyncio.sleep(3)
+        if _configured() and not _polling_active:
+            await _start_polling()
+        await asyncio.sleep(30)
 
 
 @app.on_event("startup")
-async def _startup():
-    _load_session()
-    if not STUB_MODE:
-        asyncio.create_task(_poll_messages())
+async def startup() -> None:
+    asyncio.create_task(_supervisor())
 
+
+# ── Эндпоинты ──────────────────────────────────────────────────
 
 @app.get("/status")
-async def status():
-    if STUB_MODE and _state["stage"] == "connected":
-        return {"state": "connected", "mode": "stub"}
-    return {"state": _state["stage"]}
+def status():
+    return {"state": _state}
 
 
-@app.get("/qr")
-async def qr():
-    # MAX userbot не использует QR — вход через телефон + SMS
-    return JSONResponse({"error": "MAX использует вход по телефону, QR не поддерживается"},
-                        status_code=400)
-
-
-@app.post("/login")
-async def login(phone: str = Form(...)):
-    _state["phone"] = phone.strip()
-
-    if STUB_MODE:
-        _state["stage"] = "needs_code"
-        return {"ok": True, "state": "needs_code", "mode": "stub"}
-
-    try:
-        # Запрос OTP через Mail.ru Auth API
-        async with aiohttp.ClientSession() as session:
-            async with session.post(_AUTH_URL, data={
-                "Login":  phone.strip(),
-                "Domain": "mail.ru",
-            }) as resp:
-                result = await resp.json()
-                if result.get("status") == "ok" or resp.status in (200, 302):
-                    _state["stage"] = "needs_code"
-                    return {"ok": True, "state": "needs_code"}
-                return {"ok": False, "error": result.get("error", "auth_failed")}
-    except Exception as e:
-        # Fallback: переходим к вводу кода в любом случае
-        # (реальный MAX API требует дополнительного исследования)
-        _state["stage"] = "needs_code"
-        return {"ok": True, "state": "needs_code", "_note": str(e)}
-
-
-@app.post("/code")
-async def code(code: str = Form(...)):
-    if STUB_MODE:
-        _state["stage"] = "connected"
-        _state["token"] = "stub_token_" + str(uuid.uuid4())
-        _save_session()
-        return {"ok": True, "state": "connected", "mode": "stub"}
-
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(_AUTH_URL + "/confirm", data={
-                "Login": _state["phone"],
-                "Code":  code.strip(),
-            }) as resp:
-                result = await resp.json()
-                token = result.get("token") or result.get("access_token")
-                if token:
-                    _state["token"] = token
-                    _state["stage"] = "connected"
-                    _save_session()
-                    return {"ok": True, "state": "connected"}
-                return {"ok": False, "error": result.get("error", "code_invalid")}
-    except Exception as e:
-        return {"ok": False, "error": str(e),
-                "_hint": "Установите MAX_STUB=true для тестирования UI без реального MAX API"}
-
-
-@app.post("/password")
-async def password(password: str = Form(...)):
-    # MAX 2FA практически не встречается
-    return {"ok": True, "state": _state["stage"]}
-
-
-@app.post("/logout")
-async def logout():
-    _state.update(stage="needs_auth", phone=None, token=None)
-    p = Path(SESSION_FILE)
-    if p.exists():
-        p.unlink()
+@app.post("/webhook")
+async def webhook(req: Request):
+    """Принимает события от GREEN-API (если вебхук настроен в кабинете)."""
+    body = await req.json()
+    if body.get("typeWebhook") == "incomingMessageReceived":
+        await _push_incoming(body)
     return {"ok": True}
 
 
 @app.post("/send")
 async def send(req: Request):
     body    = await req.json()
-    peer_id = str(body["peer_id"])
-    text    = body["text"]
+    chat_id = str(body["peer_id"])
+    text    = body.get("text", "")
 
-    if STUB_MODE:
-        return {"ok": True, "mode": "stub", "peer_id": peer_id}
-
-    if not _state.get("token"):
-        return JSONResponse({"error": "not connected"}, status_code=503)
+    if not _configured():
+        return JSONResponse({"error": "GREEN-API не настроен — укажите GREENAPI_ID_INSTANCE и GREENAPI_TOKEN"}, status_code=503)
+    if _state != "connected" or not _greenapi:
+        return JSONResponse({"error": f"не подключён (state={_state})"}, status_code=503)
 
     try:
-        async with aiohttp.ClientSession() as session:
-            headers = {"Authorization": f"Bearer {_state['token']}"}
-            async with session.post(
-                f"{_API_URL}/messages/send",
-                json={"to": peer_id, "text": text},
-                headers=headers,
-            ) as resp:
-                result = await resp.json()
-                return {"ok": resp.status == 200, "result": result}
+        resp = await asyncio.to_thread(lambda: _greenapi.sending.sendMessage(chat_id, text))
+        return {"ok": True, "idMessage": (resp.data or {}).get("idMessage")}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/reconnect")
+async def reconnect():
+    global _state, _greenapi
+
+    if not _configured():
+        _state = "needs_auth"
+        return {"ok": False, "state": _state}
+
+    try:
+        client = _make_client()
+        state_resp = await asyncio.to_thread(lambda: client.account.getStateInstance())
+        instance_state = (state_resp.data or {}).get("stateInstance", "")
+        _state = "connected" if instance_state == "authorized" else "needs_auth"
+        if _state == "connected":
+            _greenapi = client
+    except Exception:
+        _state = "unavailable"
+
+    return {"ok": _state == "connected", "state": _state}
+
+
+@app.post("/logout")
+async def logout():
+    global _state, _greenapi
+
+    if _greenapi and _polling_active:
+        try:
+            await asyncio.to_thread(_greenapi.webhooks.stopReceivingNotifications)
+        except Exception:
+            pass
+
+    _greenapi = None
+    _state = "needs_auth"
+    return {"ok": True}
+
+
+# Stub-эндпоинты для совместимости с UI (MAX не использует телефон/код)
+@app.post("/login")
+async def login():
+    return {"ok": True, "state": _state}
+
+@app.post("/code")
+async def code():
+    return {"ok": True, "state": _state}
+
+@app.post("/password")
+async def password():
+    return {"ok": True, "state": _state}

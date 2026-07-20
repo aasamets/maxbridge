@@ -223,10 +223,41 @@ echo
 
 WA_ENABLED=false; MAX_ENABLED=false; TG_ENABLED=false
 TG_API_ID=""; TG_API_HASH=""; VLESS_URL=""
+GREENAPI_ID_INSTANCE=""; GREENAPI_TOKEN=""
 
 if read_yn "Включить WhatsApp?"; then WA_ENABLED=true; ok "WhatsApp: включён"; fi
 if read_yn "Включить MAX?";      then MAX_ENABLED=true; ok "MAX: включён"; fi
 if read_yn "Включить Telegram?"; then TG_ENABLED=true;  ok "Telegram: включён"; fi
+
+# ── Секция 3б: MAX (если включён) ────────────────────────────────────────────
+if [[ "$MAX_ENABLED" == "true" ]]; then
+  while true; do
+    step "MAX — GREEN-API настройки"
+    echo
+    echo -e "  ${Y}MAX подключается через сервис GREEN-API (green-api.com/max).${N}"
+    echo -e "  Шаги:"
+    echo -e "   1. Зарегистрируйтесь на ${C}green-api.com/max${N}"
+    echo -e "   2. Создайте инстанс, отсканируйте QR в приложении MAX"
+    echo -e "   3. Скопируйте ${C}idInstance${N} и ${C}apiTokenInstance${N}"
+    echo -e "  (Если ключей пока нет — оставьте поля пустыми, заполните в настройках позже.)"
+    echo
+
+    read_val "idInstance (число, например: 1101234567)" ""
+    GREENAPI_ID_INSTANCE="$_VAL"
+
+    read_secret "apiTokenInstance"
+    GREENAPI_TOKEN="$_SECRET"
+
+    echo
+    echo -e "  ${BOLD}Проверьте:${N}"
+    echo -e "  idInstance: ${GREENAPI_ID_INSTANCE:-${Y}пусто${N}}"
+    echo -e "  Token:      ${G}●${N} (${#GREENAPI_TOKEN} символов)"
+    echo
+    printf "  Всё верно? [Enter — продолжить, R — повторить]: "
+    IFS= read -r _ans </dev/tty
+    [[ "${_ans,,}" != "r" ]] && break
+  done
+fi
 
 # ── Секция 4: Telegram (если включён) ────────────────────────────────────────
 if [[ "$TG_ENABLED" == "true" ]]; then
@@ -310,12 +341,13 @@ VLESS_URL=${VLESS_URL}
 
 WA_ENABLED=${WA_ENABLED}
 WA_SESSION_DIR=/sessions/wa
-WA_PROXY_HOST=${VLESS_URL:+xray}
+WA_PROXY_HOST=
 WA_PROXY_PORT=1080
 
 MAX_ENABLED=${MAX_ENABLED}
-MAX_SESSION_FILE=/sessions/max.session
-MAX_STUB=false
+GREENAPI_ID_INSTANCE=${GREENAPI_ID_INSTANCE}
+GREENAPI_TOKEN=${GREENAPI_TOKEN}
+GREENAPI_WEBHOOK_URL=${PUBLIC_URL}/adapters/max/webhook
 
 ADMIN_USER=${ADMIN_USER}
 ADMIN_PASS=${ADMIN_PASS}
