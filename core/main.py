@@ -41,6 +41,7 @@ _SESSION_TTL = 8 * 3600  # 8 часов
 _sessions: dict[str, float] = {}  # token → expiry
 
 _PUBLIC_PATHS = frozenset(["/login", "/bitrix/events", "/bitrix/install", "/bitrix/oauth"])
+_PUBLIC_PREFIXES = ("/static", "/adapters/max/webhook")
 
 LINE_ID = int(os.environ.get("B24_LINE_ID", "0"))
 
@@ -221,9 +222,10 @@ _EXPOSED_SETTINGS = [
     "TG_API_ID", "TG_API_HASH",
     "TG_PROXY_HOST", "TG_PROXY_PORT",
     "VLESS_URL",
+    "GREENAPI_ID_INSTANCE", "GREENAPI_WEBHOOK_URL",
 ]
 # Видны в UI как ***, обновляются только если пришло не "***"
-_EDITABLE_SECRETS = {"B24_CLIENT_SECRET"}
+_EDITABLE_SECRETS = {"B24_CLIENT_SECRET", "GREENAPI_TOKEN"}
 # Не передаются в UI вообще
 _READONLY_KEYS = {"ADMIN_PASS_HASH"}
 
@@ -369,7 +371,7 @@ async def bitrix_events(req: Request):
     return {"ok": True}
 
 
-# ── Прокси к адаптерам (для UI: QR, login, code, password) ────
+# ── Прокси к адаптерам ────────────────────────────────────────
 @app.get("/adapters/{name}/qr")
 async def adapter_qr(name: str):
     return await _proxy(name, "/qr", "GET")
@@ -391,6 +393,33 @@ async def adapter_code(name: str, req: Request):
 async def adapter_password(name: str, req: Request):
     form = await req.form()
     return await _proxy(name, "/password", "POST", data=dict(form))
+
+
+@app.post("/adapters/{name}/logout")
+async def adapter_logout(name: str):
+    return await _proxy(name, "/logout", "POST")
+
+
+@app.post("/adapters/{name}/reconnect")
+async def adapter_reconnect(name: str):
+    return await _proxy(name, "/reconnect", "POST")
+
+
+@app.post("/adapters/{name}/webhook")
+async def adapter_webhook(name: str, req: Request):
+    """Проброс вебхуков (GREEN-API → MAX адаптер)."""
+    body = await req.body()
+    url = ADAPTERS.get(name)
+    if not url:
+        return JSONResponse({"error": "unknown adapter"}, status_code=404)
+    async with httpx.AsyncClient(timeout=30) as cli:
+        r = await cli.post(
+            f"{url}/webhook",
+            content=body,
+            headers={"content-type": req.headers.get("content-type", "application/json")},
+        )
+    return Response(content=r.content, status_code=r.status_code,
+                    media_type=r.headers.get("content-type"))
 
 
 async def _proxy(name: str, path: str, method: str, data=None) -> Response:
