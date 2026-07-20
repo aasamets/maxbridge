@@ -60,9 +60,9 @@ Caddyfile / nginx.conf  обратный прокси: HTTPS + FastAPI session a
 
 ## Безопасность
 
-- Ядро и адаптеры слушают только `127.0.0.1`; наружу — только Caddy (443/80).
+- Ядро и адаптеры слушают только внутри Docker-сети; наружу — только Caddy (443/80).
 - Веб-морда под FastAPI session auth (cookie `mb_session`, 8ч TTL). `/bitrix/events` и `/adapters/max/webhook` открыты; events проверяются `application_token`.
-- Xray (если Telegram) слушает SOCKS5 только на `127.0.0.1`.
+- Xray слушает SOCKS5 на `0.0.0.0:1080` внутри Docker-сети (чтобы wa/telegram могли достучаться по имени сервиса); наружу порт не пробрасывается.
 - `ufw`: открыты 22/80/443. SSH — по ключу, без пароля/root.
 
 ## WhatsApp и прокси (фолбэк)
@@ -80,6 +80,26 @@ docker compose up -d wa
 WA пойдёт через тот же VLESS-прокси что и Telegram. Минус: иностранный IP для WA — выше
 риск бана аккаунта. Альтернатива — поднять отдельный SOCKS5 на домашней машине
 (microsocks / 3proxy + порт-форвард на роутере) и указать его как `WA_PROXY_HOST`.
+
+**Подтверждено (2026-07-20):** WA через VLESS-Reality + SOCKS5 xray работает корректно.
+Baileys успешно проходит Noise Protocol handshake, генерирует QR-код. Ошибка 408
+(connectionLost) — нормальное поведение: WhatsApp закрывает WebSocket через ~75 сек если
+никто не отсканировал QR; адаптер переподключается и генерирует новый QR автоматически.
+Диагностика через прокси из wa-контейнера: `wss://web.whatsapp.com/ws/chat` открывается
+за ~450 мс (через xray → VLESS → 31.13.x.x).
+
+**Диагностика WA:** если QR не появляется >5 минут:
+```bash
+# Из wa-контейнера: проверить что xray доступен
+docker exec maxbridge-wa-1 node -e "
+const {SocksProxyAgent} = require('socks-proxy-agent');
+const agent = new SocksProxyAgent('socks5://xray:1080');
+const https = require('https');
+https.get('https://web.whatsapp.com/', {agent}, r => console.log('HTTP', r.statusCode))
+  .on('error', e => console.log('ERR', e.message));
+"
+# Ожидаем: HTTP 200
+```
 
 ## Рабочий процесс с Claude Code
 
