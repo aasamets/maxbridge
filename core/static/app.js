@@ -456,6 +456,16 @@ function updateProxyCard(s) {
   }
 }
 
+// ── Справка (тултип-панели) ───────────────────────────────────────────────────
+
+function toggleHelp(id) {
+  const panel = document.getElementById(`help-${id}`);
+  const btn   = document.getElementById(`help-btn-${id}`);
+  if (!panel) return;
+  const open = panel.classList.toggle('open');
+  if (btn) btn.classList.toggle('active', open);
+}
+
 // ── Инициализация ─────────────────────────────────────────────────────────────
 
 connectWS();
