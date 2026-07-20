@@ -166,21 +166,24 @@ function renderBody(name, state) {
   if (name === 'max') {
     if (state === 'needs_auth') {
       return `<div>
-        <p class="msg-info">Авторизуйте номер MAX в кабинете
+        <p class="msg-info" style="margin-bottom:8px">
+          <strong>Шаг 1.</strong> Зарегистрируйтесь на
           <a href="https://green-api.com/max" target="_blank" rel="noopener">green-api.com/max</a>
-          и укажите <strong>ID инстанса</strong> и <strong>Токен</strong> в Настройках ниже.
+          и создайте MAX-инстанс.<br>
+          <strong>Шаг 2.</strong> Укажите <em>ID инстанса</em> и <em>Токен</em>
+          в <button class="btn btn-ghost btn-sm" onclick="toggleSettings()">Настройках</button>
+          и нажмите Сохранить.<br>
+          <strong>Шаг 3.</strong> Нажмите «Показать QR» ниже и отсканируйте в приложении MAX.
         </p>
-        <p class="msg-info" style="margin-top:6px">После сохранения нажмите
-          <button class="btn btn-secondary btn-sm" onclick="restartAdapter('max')">Переподключить MAX</button>
+        <div class="qr-wrap" id="max-qr-wrap" style="display:none">
+          <img id="max-qr-img" src="" alt="QR MAX"
+               onerror="document.getElementById('max-qr-wrap').style.display='none';document.getElementById('max-qr-hint').style.display='block'">
+        </div>
+        <p id="max-qr-hint" class="msg-error" style="display:none">
+          QR недоступен — проверьте ID инстанса и токен в Настройках.
         </p>
-      </div>`;
-    }
-    if (state === 'needs_code') {
-      return `<div class="auth-form">
-        <p class="msg-info">Введите код из SMS</p>
-        <input class="input" id="max-code" type="text" placeholder="12345" inputmode="numeric">
-        <button class="btn btn-primary" onclick="sendCode('max')">Войти</button>
-        <div id="retry-max"></div>
+        <button class="btn btn-primary" onclick="showMaxQr()">Показать QR</button>
+        <button class="btn btn-secondary btn-sm" style="margin-left:8px" onclick="restartAdapter('max')">Переподключить</button>
       </div>`;
     }
   }
@@ -257,6 +260,43 @@ async function restartAdapter(adapter) {
 function refreshQR(adapter) {
   const img = document.querySelector(`#body-${adapter} img`);
   if (img) img.src = `/adapters/${adapter}/qr?t=${Date.now()}`;
+}
+
+async function showMaxQr() {
+  const wrap = document.getElementById('max-qr-wrap');
+  const img  = document.getElementById('max-qr-img');
+  const hint = document.getElementById('max-qr-hint');
+  if (!wrap || !img) return;
+
+  // Проверим: если 503 — QR недоступен, показываем подсказку
+  const res = await fetch(`/adapters/max/qr?t=${Date.now()}`);
+  if (res.ok && res.headers.get('content-type')?.includes('image')) {
+    const blob = await res.blob();
+    img.src = URL.createObjectURL(blob);
+    wrap.style.display = 'block';
+    if (hint) hint.style.display = 'none';
+    // Авто-обновление QR каждые 20 сек (QR GREEN-API живёт ~20 сек)
+    _startMaxQrRefresh();
+  } else {
+    if (hint) hint.style.display = 'block';
+    wrap.style.display = 'none';
+  }
+}
+
+let _maxQrInterval = null;
+function _startMaxQrRefresh() {
+  clearInterval(_maxQrInterval);
+  _maxQrInterval = setInterval(async () => {
+    const img = document.getElementById('max-qr-img');
+    if (!img) { clearInterval(_maxQrInterval); return; }
+    const res = await fetch(`/adapters/max/qr?t=${Date.now()}`);
+    if (res.ok && res.headers.get('content-type')?.includes('image')) {
+      const blob = await res.blob();
+      img.src = URL.createObjectURL(blob);
+    } else {
+      clearInterval(_maxQrInterval);
+    }
+  }, 20000);
 }
 
 // ── Битрикс24 OAuth ───────────────────────────────────────────────────────────

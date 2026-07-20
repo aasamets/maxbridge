@@ -1,11 +1,15 @@
 """
 MAX адаптер через GREEN-API (green-api.com/max).
 
-Авторизация MAX-аккаунта — один раз в кабинете GREEN-API по QR.
-Адаптер подключается к GREEN-API по REST, получает сообщения через polling.
+Авторизация MAX-аккаунта:
+  1. Создать инстанс на green-api.com/max
+  2. Скопировать idInstance + apiTokenInstance в .env
+  3. GET /qr — адаптер стянет QR из GREEN-API и отдаст PNG
+  4. Отсканировать с телефона в приложении MAX
 
 Контракт:
   GET  /status              → {"state": "connected|needs_auth|unavailable"}
+  GET  /qr                  → PNG QR-кода (тянет из GREEN-API)
   POST /webhook             → вебхук GREEN-API (альтернатива polling)
   POST /send                → json: {peer_id, text}
   POST /reconnect           → перепроверить подключение
@@ -22,11 +26,12 @@ MAX адаптер через GREEN-API (green-api.com/max).
 """
 
 import asyncio
+import base64
 import os
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 CORE_URL     = os.environ.get("CORE_URL", "http://core:8000").rstrip("/")
 ADAPTER_NAME = os.environ.get("ADAPTER_NAME", "max")
@@ -132,6 +137,34 @@ async def startup() -> None:
 @app.get("/status")
 def status():
     return {"state": _state}
+
+
+@app.get("/qr")
+async def qr():
+    """Возвращает PNG QR-код для авторизации MAX через GREEN-API."""
+    if _state == "connected":
+        return JSONResponse({"state": "connected"})
+    if not _configured():
+        return JSONResponse(
+            {"error": "Укажите GREENAPI_ID_INSTANCE и GREENAPI_TOKEN в Настройках"},
+            status_code=503,
+        )
+    try:
+        client = _make_client()
+        resp = await asyncio.to_thread(lambda: client.account.qr())
+        data = resp.data or {}
+        qr_type = data.get("type", "")
+
+        if qr_type == "alreadyLogged":
+            return JSONResponse({"state": "connected"})
+
+        if qr_type == "qrCode":
+            img_bytes = base64.b64decode(data.get("message", ""))
+            return Response(content=img_bytes, media_type="image/png")
+
+        return JSONResponse({"error": qr_type or "qr_not_ready"}, status_code=202)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.post("/webhook")
