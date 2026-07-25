@@ -9,7 +9,7 @@
   --text:        #000000;
   --text-2:      #6b6b80;
   --text-3:      #aeaeb2;
-  --accent:      #007AFF;
+  --accent:      #3d5c82;
   --green:       #34c759;
   --yellow:      #ff9f0a;
   --red:         #ff3b30;
@@ -222,7 +222,11 @@ body {
 .btn-secondary { background: var(--surface2); color: var(--accent); border: 1.5px solid var(--border); }
 .btn-ghost     { background: transparent; color: var(--accent); font-size: 15px; font-weight: 500; font-family: inherit; border: none; cursor: pointer; }
 .btn-danger    { background: var(--red); color: #fff; }
-.btn-sm        { padding: 7px 14px; font-size: 13px; }
+.btn-sm        { padding: 7px 14px; }
+
+/* Кнопки внутри карточек мессенджеров — на всю ширину */
+.card-body .btn { width: 100%; }
+.card-body .btn + .btn { margin-top: 8px; }
 
 /* ── Настройки ──────────────────────────────────────────────── */
 

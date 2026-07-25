@@ -49,7 +49,7 @@ function _scheduleRetryRender(adapter) {
     if (!r) return;
     const el = document.getElementById(`retry-${adapter}`);
     if (el) {
-      el.innerHTML = `<p class="msg-info" style="margin-top:8px">Не пришёл код? <button class="btn btn-secondary btn-sm" onclick="retryAction('${adapter}')">Запросить повторно</button></p>`;
+      el.innerHTML = `<p class="msg-info" style="margin-top:8px">Не пришёл код?</p><button class="btn btn-secondary" onclick="retryAction('${adapter}')">Запросить повторно</button>`;
     }
     _scheduleRetryRender(adapter);
   }, 60000);
@@ -141,7 +141,7 @@ function renderBody(name, state) {
         <span class="connected-check">✓</span>
         <span class="connected-text">Подключён и принимает сообщения</span>
       </div>
-      <button class="btn btn-secondary btn-sm" onclick="disconnectAdapter('${name}')">Отключить</button>
+      <button class="btn btn-secondary" onclick="disconnectAdapter('${name}')">Отключить</button>
     </div>`;
   }
 
@@ -159,7 +159,7 @@ function renderBody(name, state) {
         <div class="qr-wrap">
           <img src="/adapters/whatsapp/qr?t=${Date.now()}" alt="QR" onerror="this.parentElement.innerHTML='<p class=msg-error>QR недоступен — запустите адаптер</p>'">
         </div>
-        <button class="btn btn-secondary btn-sm" onclick="refreshQR('whatsapp')">Обновить QR</button>
+        <button class="btn btn-secondary" onclick="refreshQR('whatsapp')">Обновить QR</button>
       </div>`;
     }
   }
@@ -178,7 +178,7 @@ function renderBody(name, state) {
         </div>
         <p id="max-qr-hint" class="msg-error" style="display:none">QR недоступен — адаптер ещё запускается, подождите.</p>
         <button class="btn btn-primary" onclick="showMaxQr()">Показать QR</button>
-        <button class="btn btn-secondary btn-sm" style="margin-left:8px" onclick="restartAdapter('max')">Переподключить</button>
+        <button class="btn btn-secondary" onclick="restartAdapter('max')">Переподключить</button>
       </div>`;
     }
   }
