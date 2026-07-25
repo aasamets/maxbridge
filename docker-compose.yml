@@ -31,9 +31,7 @@ services:
     environment:
       CORE_URL: http://core:8000
       ADAPTER_NAME: max
-      GREENAPI_ID_INSTANCE: ${GREENAPI_ID_INSTANCE:-}
-      GREENAPI_TOKEN: ${GREENAPI_TOKEN:-}
-      GREENAPI_WEBHOOK_URL: ${GREENAPI_WEBHOOK_URL:-}
+      SESSION_DIR: /sessions/max
     depends_on:
       - core
 

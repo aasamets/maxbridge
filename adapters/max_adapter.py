@@ -1,129 +1,145 @@
 """
-MAX адаптер через GREEN-API (green-api.com/max).
+MAX адаптер через pymax (WebClient, QR-авторизация, self-hosted).
 
-Авторизация MAX-аккаунта:
-  1. Создать инстанс на green-api.com/max
-  2. Скопировать idInstance + apiTokenInstance в .env
-  3. GET /qr — адаптер стянет QR из GREEN-API и отдаст PNG
-  4. Отсканировать с телефона в приложении MAX
+Авторизация:
+  1. Адаптер запускается, запрашивает QR у MAX-серверов
+  2. GET /qr — возвращает PNG QR-кода
+  3. Пользователь сканирует QR в приложении MAX:
+     Профиль → Устройства → Привязать устройство → Сканировать QR
+  4. Сессия сохраняется в SESSION_DIR/session.db (volume)
 
 Контракт:
-  GET  /status              → {"state": "connected|needs_auth|unavailable"}
-  GET  /qr                  → PNG QR-кода (тянет из GREEN-API)
-  POST /webhook             → вебхук GREEN-API (альтернатива polling)
-  POST /send                → json: {peer_id, text}
-  POST /reconnect           → перепроверить подключение
-  POST /login|code|password|logout  → stub для совместимости с UI
+  GET  /status  → {"state": "connected|needs_auth|unavailable"}
+  GET  /qr      → PNG QR-кода (пока не подключён)
+  POST /send    → json: {peer_id: str, text: str}
+  POST /logout  → сбросить сессию и переавторизоваться
+  POST /reconnect → перезапустить клиент
+  POST /login|code|password → stub для совместимости с UI
 
 Переменные окружения:
-  GREENAPI_ID_INSTANCE  — idInstance из кабинета GREEN-API
-  GREENAPI_TOKEN        — apiTokenInstance из кабинета GREEN-API
-  CORE_URL              — адрес ядра (default: http://core:8000)
-  ADAPTER_NAME          — имя адаптера (default: max)
-
-Запуск:
-  uvicorn adapters.max_adapter:app --host 0.0.0.0 --port 9002
+  SESSION_DIR  — директория для сессии (default: /sessions/max)
+  CORE_URL     — адрес ядра (default: http://core:8000)
+  ADAPTER_NAME — имя адаптера (default: max)
 """
 
+from __future__ import annotations
+
 import asyncio
-import base64
+import io
 import os
+import shutil
 
 import httpx
+import qrcode
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
+from pymax import Message, WebClient
+from pymax.auth.providers import QrHandler
 
 CORE_URL     = os.environ.get("CORE_URL", "http://core:8000").rstrip("/")
 ADAPTER_NAME = os.environ.get("ADAPTER_NAME", "max")
-ID_INSTANCE  = os.environ.get("GREENAPI_ID_INSTANCE", "").strip()
-API_TOKEN    = os.environ.get("GREENAPI_TOKEN", "").strip()
+SESSION_DIR  = os.environ.get("SESSION_DIR", "/sessions/max")
 
 app = FastAPI()
 
-_state: str = "needs_auth"
-_greenapi = None
-_event_loop: asyncio.AbstractEventLoop | None = None
-_polling_active: bool = False
+_state: str           = "needs_auth"
+_current_qr_png: bytes | None = None
+_client: WebClient | None     = None
+_client_task: asyncio.Task | None = None
 
 
-def _configured() -> bool:
-    return bool(ID_INSTANCE and API_TOKEN)
+# ── QR handler ───────────────────────────────────────────────────────────────
+
+class _QrHandler:
+    """Перехватывает QR URL от pymax и сохраняет PNG для HTTP-эндпоинта."""
+
+    async def show_qr(self, qr_url: str) -> None:
+        global _current_qr_png, _state
+        qr_obj = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_L)
+        qr_obj.add_data(qr_url)
+        buf = io.BytesIO()
+        qr_obj.make_image(fill_color="black", back_color="white").save(buf, format="PNG")
+        _current_qr_png = buf.getvalue()
+        _state = "needs_auth"
 
 
-def _make_client():
-    from max_api_client_python import API  # noqa: PLC0415
-    return API.GreenAPI(ID_INSTANCE, API_TOKEN)
+# ── Клиент pymax ─────────────────────────────────────────────────────────────
 
+async def _push_incoming(client: WebClient, msg: Message) -> None:
+    """Пушит входящее сообщение в ядро."""
+    chat_id = msg.chat_id
+    sender  = msg.sender
+    text    = msg.text
 
-async def _push_incoming(body: dict) -> None:
-    sender   = body.get("senderData", {})
-    msg_data = body.get("messageData", {})
-
-    chat_id = sender.get("chatId", "")
-    msg_id  = body.get("idMessage", "")
-    name    = sender.get("chatName") or sender.get("senderName", "")
-    phone   = chat_id.split("@")[0] if "@" in chat_id else None
-
-    type_msg = msg_data.get("typeMessage", "")
-    text = ""
-    if type_msg == "textMessage":
-        text = msg_data.get("textMessageData", {}).get("textMessage", "")
-    elif type_msg == "extendedTextMessage":
-        text = msg_data.get("extendedTextMessageData", {}).get("text", "")
-
-    if not chat_id:
-        return
+    # Пытаемся получить номер телефона отправителя для CRM-маппинга в Битриксе
+    phone: str | None = None
+    if sender is not None:
+        try:
+            user = await client.get_user(sender)
+            if user and user.phone:
+                phone = f"+{user.phone}"
+        except Exception:
+            pass
 
     async with httpx.AsyncClient(timeout=10) as cli:
         await cli.post(f"{CORE_URL}/incoming", json={
             "adapter": ADAPTER_NAME,
-            "peer_id": chat_id,
-            "msg_id":  msg_id,
+            "peer_id": str(chat_id),
+            "msg_id":  "",
             "text":    text,
-            "name":    name,
-            "phone":   phone,
+            "name":    None,
+            "phone":   phone or str(sender),
         })
 
 
-def _sync_handler(type_webhook: str, body: dict) -> None:
-    """Синхронный обработчик, вызываемый из потока polling."""
-    if type_webhook == "incomingMessageReceived" and _event_loop:
-        asyncio.run_coroutine_threadsafe(_push_incoming(body), _event_loop)
+async def _run_client() -> None:
+    global _state, _client, _current_qr_png
 
+    os.makedirs(SESSION_DIR, exist_ok=True)
 
-async def _start_polling() -> None:
-    global _state, _greenapi, _event_loop, _polling_active
+    _client = WebClient(
+        session_name="session.db",
+        work_dir=SESSION_DIR,
+        qr_provider=_QrHandler(),
+    )
 
-    _event_loop = asyncio.get_event_loop()
-    try:
-        _greenapi = _make_client()
-
-        # Проверяем состояние инстанса
-        state_resp = await asyncio.to_thread(lambda: _greenapi.account.getStateInstance())
-        instance_state = (state_resp.data or {}).get("stateInstance", "")
-
-        if instance_state != "authorized":
-            _state = "needs_auth"
-            return
-
+    @_client.on_start()
+    async def on_start(client: WebClient) -> None:
+        global _state, _current_qr_png
         _state = "connected"
-        _polling_active = True
+        _current_qr_png = None
 
-        # Blocking poll — завершится когда stopReceivingNotifications будет вызван
-        await asyncio.to_thread(
-            _greenapi.webhooks.startReceivingNotifications, _sync_handler
-        )
-    except Exception:
+    @_client.on_message()
+    async def on_message(msg: Message, client: WebClient) -> None:
+        if not msg.text:
+            return
+        me = client.me
+        if me and msg.sender == me.id:
+            return
+        try:
+            await _push_incoming(client, msg)
+        except Exception as exc:
+            print(f"[MAX] Ошибка отправки в core: {exc}")
+
+    _state = "needs_auth"
+    try:
+        await _client.start()
+    except asyncio.CancelledError:
+        pass
+    except Exception as exc:
+        print(f"[MAX] Клиент упал: {exc}")
         _state = "unavailable"
     finally:
-        _polling_active = False
+        if _state == "connected":
+            _state = "needs_auth"
 
 
 async def _supervisor() -> None:
-    """Перезапускает polling при падении или после logout."""
+    """Перезапускает клиент при падении."""
+    global _client_task
     while True:
-        if _configured() and not _polling_active:
-            await _start_polling()
+        if _client_task is None or _client_task.done():
+            _client_task = asyncio.create_task(_run_client())
         await asyncio.sleep(30)
 
 
@@ -132,7 +148,7 @@ async def startup() -> None:
     asyncio.create_task(_supervisor())
 
 
-# ── Эндпоинты ──────────────────────────────────────────────────
+# ── Эндпоинты ────────────────────────────────────────────────────────────────
 
 @app.get("/status")
 def status():
@@ -141,96 +157,63 @@ def status():
 
 @app.get("/qr")
 async def qr():
-    """Возвращает PNG QR-код для авторизации MAX через GREEN-API."""
     if _state == "connected":
         return JSONResponse({"state": "connected"})
-    if not _configured():
-        return JSONResponse(
-            {"error": "Укажите GREENAPI_ID_INSTANCE и GREENAPI_TOKEN в Настройках"},
-            status_code=503,
-        )
-    try:
-        client = _make_client()
-        resp = await asyncio.to_thread(lambda: client.account.qr())
-        data = resp.data or {}
-        qr_type = data.get("type", "")
-
-        if qr_type == "alreadyLogged":
-            return JSONResponse({"state": "connected"})
-
-        if qr_type == "qrCode":
-            img_bytes = base64.b64decode(data.get("message", ""))
-            return Response(content=img_bytes, media_type="image/png")
-
-        return JSONResponse({"error": qr_type or "qr_not_ready"}, status_code=202)
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@app.post("/webhook")
-async def webhook(req: Request):
-    """Принимает события от GREEN-API (если вебхук настроен в кабинете)."""
-    body = await req.json()
-    if body.get("typeWebhook") == "incomingMessageReceived":
-        await _push_incoming(body)
-    return {"ok": True}
+    if _current_qr_png:
+        return Response(content=_current_qr_png, media_type="image/png")
+    return JSONResponse({"state": _state, "hint": "QR ещё не готов — подождите"}, status_code=202)
 
 
 @app.post("/send")
 async def send(req: Request):
     body    = await req.json()
-    chat_id = str(body["peer_id"])
+    peer_id = str(body["peer_id"])
     text    = body.get("text", "")
 
-    if not _configured():
-        return JSONResponse({"error": "GREEN-API не настроен — укажите GREENAPI_ID_INSTANCE и GREENAPI_TOKEN"}, status_code=503)
-    if _state != "connected" or not _greenapi:
+    if _state != "connected" or _client is None:
         return JSONResponse({"error": f"не подключён (state={_state})"}, status_code=503)
 
     try:
-        resp = await asyncio.to_thread(lambda: _greenapi.sending.sendMessage(chat_id, text))
-        return {"ok": True, "idMessage": (resp.data or {}).get("idMessage")}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        await _client.send_message(int(peer_id), text)
+        return {"ok": True}
+    except ValueError:
+        return JSONResponse({"error": f"некорректный chat_id: {peer_id}"}, status_code=400)
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
 
 
 @app.post("/reconnect")
 async def reconnect():
-    global _state, _greenapi
-
-    if not _configured():
-        _state = "needs_auth"
-        return {"ok": False, "state": _state}
-
-    try:
-        client = _make_client()
-        state_resp = await asyncio.to_thread(lambda: client.account.getStateInstance())
-        instance_state = (state_resp.data or {}).get("stateInstance", "")
-        _state = "connected" if instance_state == "authorized" else "needs_auth"
-        if _state == "connected":
-            _greenapi = client
-    except Exception:
-        _state = "unavailable"
-
-    return {"ok": _state == "connected", "state": _state}
+    global _client_task, _client
+    if _client_task and not _client_task.done():
+        _client_task.cancel()
+        try:
+            await _client_task
+        except (asyncio.CancelledError, Exception):
+            pass
+    _client_task = None
+    _client = None
+    return {"ok": True, "state": _state}
 
 
 @app.post("/logout")
 async def logout():
-    global _state, _greenapi
-
-    if _greenapi and _polling_active:
+    global _state, _current_qr_png, _client_task, _client
+    if _client_task and not _client_task.done():
+        _client_task.cancel()
         try:
-            await asyncio.to_thread(_greenapi.webhooks.stopReceivingNotifications)
-        except Exception:
+            await _client_task
+        except (asyncio.CancelledError, Exception):
             pass
-
-    _greenapi = None
+    _client_task = None
+    _client = None
+    _current_qr_png = None
     _state = "needs_auth"
+    shutil.rmtree(SESSION_DIR, ignore_errors=True)
     return {"ok": True}
 
 
-# Stub-эндпоинты для совместимости с UI (MAX не использует телефон/код)
+# Stub-эндпоинты для совместимости с UI (MAX авторизуется по QR, не по телефону)
 @app.post("/login")
 async def login():
     return {"ok": True, "state": _state}
@@ -240,5 +223,5 @@ async def code():
     return {"ok": True, "state": _state}
 
 @app.post("/password")
-async def password():
+async def password_ep():
     return {"ok": True, "state": _state}

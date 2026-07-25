@@ -222,10 +222,9 @@ _EXPOSED_SETTINGS = [
     "TG_API_ID", "TG_API_HASH",
     "TG_PROXY_HOST", "TG_PROXY_PORT",
     "VLESS_URL",
-    "GREENAPI_ID_INSTANCE", "GREENAPI_WEBHOOK_URL",
 ]
 # Видны в UI как ***, обновляются только если пришло не "***"
-_EDITABLE_SECRETS = {"B24_CLIENT_SECRET", "GREENAPI_TOKEN"}
+_EDITABLE_SECRETS = {"B24_CLIENT_SECRET"}
 # Не передаются в UI вообще
 _READONLY_KEYS = {"ADMIN_PASS_HASH"}
 
