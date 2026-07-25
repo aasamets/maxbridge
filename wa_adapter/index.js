@@ -106,12 +106,14 @@ async function connectWA() {
   });
 
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    console.log(`[WA] messages.upsert type=${type} count=${messages.length}`);
     if (type !== 'notify') return;
     for (const msg of messages) {
+      const jid = msg.key.remoteJid;
+      console.log(`[WA] msg jid=${jid} fromMe=${msg.key.fromMe} hasMsg=${!!msg.message}`);
       if (!msg.message || msg.key.fromMe) continue;
-      if (!isJidUser(msg.key.remoteJid))  continue;  // только личные чаты
+      if (!isJidUser(jid)) continue;  // только личные чаты
 
-      const jid      = msg.key.remoteJid;                  // "79990000000@s.whatsapp.net"
       const phone    = '+' + jid.replace('@s.whatsapp.net', '');
       const text     = extractText(msg.message);
       const pushName = msg.pushName || null;
@@ -119,12 +121,13 @@ async function connectWA() {
       try {
         await axios.post(`${CORE_URL}/incoming`, {
           adapter:  ADAPTER_NAME,
-          peer_id:  phone,       // используем номер как peer_id для CRM-маппинга
+          peer_id:  phone,
           msg_id:   msg.key.id,
           text,
           name:     pushName,
           phone,
         });
+        console.log(`[WA] → core OK: ${phone} "${text}"`);
       } catch (e) {
         console.error('[WA] Ошибка отправки в core:', e.message);
       }

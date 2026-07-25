@@ -201,7 +201,8 @@ async def logout(req: Request):
 # ── SPA ───────────────────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
 async def index():
-    return (_STATIC / "index.html").read_text()
+    content = (_STATIC / "index.html").read_text()
+    return HTMLResponse(content=content, headers={"Cache-Control": "no-store"})
 
 
 # ── API статусов ───────────────────────────────────────────────
@@ -213,6 +214,16 @@ async def api_status():
 @app.get("/api/proxy/status")
 async def api_proxy_status():
     return _proxy_status
+
+
+@app.get("/api/b24/status")
+async def api_b24_status():
+    """Проверяет есть ли живые токены Битрикс24 в DB (без сетевого запроса)."""
+    token = store.kv_get("b24_access_token")
+    refresh = store.kv_get("b24_refresh_token")
+    if token and refresh:
+        return {"state": "authorized"}
+    return {"state": "needs_auth"}
 
 
 # ── API настроек ───────────────────────────────────────────────

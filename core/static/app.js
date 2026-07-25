@@ -438,6 +438,25 @@ function toggleHelp(id) {
   if (btn) btn.classList.toggle('active', open);
 }
 
+// ── Битрикс24: авто-проверка статуса на старте ───────────────────────────────
+
+async function checkB24Status() {
+  try {
+    const s = await fetch('/api/b24/status').then(r => r.json());
+    const dot   = document.getElementById('dot-b24');
+    const label = document.getElementById('label-b24');
+    if (!dot) return;
+    if (s.state === 'authorized') {
+      dot.className   = 'status-dot green';
+      label.textContent = 'Авторизован';
+    } else {
+      dot.className   = 'status-dot red';
+      label.textContent = 'Не авторизован';
+    }
+  } catch (_) {}
+}
+
 // ── Инициализация ─────────────────────────────────────────────────────────────
 
 connectWS();
+checkB24Status();
