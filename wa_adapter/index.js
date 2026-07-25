@@ -106,28 +106,36 @@ async function connectWA() {
   });
 
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
-    console.log(`[WA] messages.upsert type=${type} count=${messages.length}`);
     if (type !== 'notify') return;
     for (const msg of messages) {
       const jid = msg.key.remoteJid;
-      console.log(`[WA] msg jid=${jid} fromMe=${msg.key.fromMe} hasMsg=${!!msg.message}`);
       if (!msg.message || msg.key.fromMe) continue;
-      if (!isJidUser(jid)) continue;  // только личные чаты
+      // Принимаем личные чаты: @s.whatsapp.net (стандарт) и @lid (новый WA-формат)
+      if (!isJidUser(jid) && !jid.endsWith('@lid')) continue;
 
-      const phone    = '+' + jid.replace('@s.whatsapp.net', '');
+      let phone, peer_id;
+      if (jid.endsWith('@s.whatsapp.net')) {
+        phone   = '+' + jid.replace('@s.whatsapp.net', '');
+        peer_id = phone;
+      } else {
+        // @lid: номер скрыт WhatsApp, используем LID как peer_id
+        peer_id = jid;
+        phone   = null;
+      }
+
       const text     = extractText(msg.message);
       const pushName = msg.pushName || null;
 
       try {
         await axios.post(`${CORE_URL}/incoming`, {
           adapter:  ADAPTER_NAME,
-          peer_id:  phone,
+          peer_id,
           msg_id:   msg.key.id,
           text,
           name:     pushName,
           phone,
         });
-        console.log(`[WA] → core OK: ${phone} "${text}"`);
+        console.log(`[WA] → core OK peer=${peer_id} "${text}"`);
       } catch (e) {
         console.error('[WA] Ошибка отправки в core:', e.message);
       }
