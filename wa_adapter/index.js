@@ -60,7 +60,8 @@ async function connectWA() {
 
   let version;
   try {
-    ({ version } = await fetchLatestBaileysVersion());
+    const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000));
+    ({ version } = await Promise.race([fetchLatestBaileysVersion(), timeout]));
   } catch (e) {
     console.warn('[WA] fetchLatestBaileysVersion недоступен, используем встроенную версию');
   }
