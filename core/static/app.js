@@ -281,9 +281,7 @@ async function showMaxQr() {
 async function openOAuth() {
   const res = await fetch('/api/oauth_url').then(r => r.json());
   if (res.url) {
-    window.open(res.url, '_blank');
-    document.getElementById('label-b24').textContent = 'Ожидание авторизации...';
-    document.getElementById('dot-b24').className = 'status-dot yellow';
+    window.location.href = res.url;
   }
 }
 

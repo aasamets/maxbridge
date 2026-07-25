@@ -122,16 +122,16 @@ async def _run_client() -> None:
             print(f"[MAX] Ошибка отправки в core: {exc}")
 
     _state = "needs_auth"
+    _current_qr_png = None
     try:
         await _client.start()
     except asyncio.CancelledError:
         pass
     except Exception as exc:
         print(f"[MAX] Клиент упал: {exc}")
-        _state = "unavailable"
     finally:
-        if _state == "connected":
-            _state = "needs_auth"
+        _state = "needs_auth"
+        _current_qr_png = None
 
 
 async def _supervisor() -> None:
@@ -140,7 +140,7 @@ async def _supervisor() -> None:
     while True:
         if _client_task is None or _client_task.done():
             _client_task = asyncio.create_task(_run_client())
-        await asyncio.sleep(30)
+        await asyncio.sleep(5)
 
 
 @app.on_event("startup")
