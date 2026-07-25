@@ -256,11 +256,12 @@ body {
 /* ── Connected state ─────────────────────────────────────────── */
 
 .connected-state {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 0;
+  display: flex; flex-direction: column; align-items: flex-start;
+  gap: 10px; padding: 10px 0;
 }
-.connected-check { font-size: 20px; }
-.connected-text { font-size: 14px; color: var(--text-2); flex: 1; }
+.connected-row { display: flex; align-items: center; gap: 8px; }
+.connected-check { font-size: 18px; color: var(--green); line-height: 1; }
+.connected-text { font-size: 14px; color: var(--text-2); }
 
 /* ── Footer ─────────────────────────────────────────────────── */
 

@@ -137,8 +137,10 @@ function updateCard(name, state) {
 function renderBody(name, state) {
   if (state === 'connected') {
     return `<div class="connected-state">
-      <span class="connected-check">✓</span>
-      <span class="connected-text">Мессенджер подключён и принимает сообщения</span>
+      <div class="connected-row">
+        <span class="connected-check">✓</span>
+        <span class="connected-text">Подключён и принимает сообщения</span>
+      </div>
       <button class="btn btn-secondary btn-sm" onclick="disconnectAdapter('${name}')">Отключить</button>
     </div>`;
   }
@@ -366,11 +368,6 @@ function renderSettingsForm(s) {
     ${field('TG_API_ID',   'Telegram API ID',   'my.telegram.org → API development tools')}
     ${field('TG_API_HASH', 'Telegram API Hash', '')}
     ${field('VLESS_URL',   'VLESS-ссылка (прокси Telegram)', 'vless://...')}
-
-    <h3 style="font-size:13px;font-weight:600;color:var(--text-2);margin:8px 0 4px">MAX (GREEN-API)</h3>
-    ${field('GREENAPI_ID_INSTANCE', 'ID инстанса', 'из кабинета green-api.com/max')}
-    ${secret('GREENAPI_TOKEN',      'Токен инстанса', '*** = не менять')}
-    ${field('GREENAPI_WEBHOOK_URL', 'URL вебхука', 'https://ваш-домен.ru/adapters/max/webhook')}
 
     <h3 style="font-size:13px;font-weight:600;color:var(--text-2);margin:8px 0 4px">Общие</h3>
     ${field('PUBLIC_URL',  'Публичный URL', '')}
