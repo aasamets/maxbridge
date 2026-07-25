@@ -164,26 +164,19 @@ function renderBody(name, state) {
     }
   }
 
-  // MAX (GREEN-API)
+  // MAX (pymax, QR-авторизация)
   if (name === 'max') {
     if (state === 'needs_auth') {
       return `<div>
         <p class="msg-info" style="margin-bottom:8px">
-          <strong>Шаг 1.</strong> Зарегистрируйтесь на
-          <a href="https://green-api.com/max" target="_blank" rel="noopener">green-api.com/max</a>
-          и создайте MAX-инстанс.<br>
-          <strong>Шаг 2.</strong> Укажите <em>ID инстанса</em> и <em>Токен</em>
-          в <button class="btn btn-ghost btn-sm" onclick="toggleSettings()">Настройках</button>
-          и нажмите Сохранить.<br>
-          <strong>Шаг 3.</strong> Нажмите «Показать QR» ниже и отсканируйте в приложении MAX.
+          Отсканируйте QR в приложении MAX:<br>
+          <strong>Профиль → Устройства → Привязать устройство</strong>
         </p>
         <div class="qr-wrap" id="max-qr-wrap" style="display:none">
           <img id="max-qr-img" src="" alt="QR MAX"
                onerror="document.getElementById('max-qr-wrap').style.display='none';document.getElementById('max-qr-hint').style.display='block'">
         </div>
-        <p id="max-qr-hint" class="msg-error" style="display:none">
-          QR недоступен — проверьте ID инстанса и токен в Настройках.
-        </p>
+        <p id="max-qr-hint" class="msg-error" style="display:none">QR недоступен — адаптер ещё запускается, подождите.</p>
         <button class="btn btn-primary" onclick="showMaxQr()">Показать QR</button>
         <button class="btn btn-secondary btn-sm" style="margin-left:8px" onclick="restartAdapter('max')">Переподключить</button>
       </div>`;
@@ -277,28 +270,10 @@ async function showMaxQr() {
     img.src = URL.createObjectURL(blob);
     wrap.style.display = 'block';
     if (hint) hint.style.display = 'none';
-    // Авто-обновление QR каждые 20 сек (QR GREEN-API живёт ~20 сек)
-    _startMaxQrRefresh();
   } else {
     if (hint) hint.style.display = 'block';
     wrap.style.display = 'none';
   }
-}
-
-let _maxQrInterval = null;
-function _startMaxQrRefresh() {
-  clearInterval(_maxQrInterval);
-  _maxQrInterval = setInterval(async () => {
-    const img = document.getElementById('max-qr-img');
-    if (!img) { clearInterval(_maxQrInterval); return; }
-    const res = await fetch(`/adapters/max/qr?t=${Date.now()}`);
-    if (res.ok && res.headers.get('content-type')?.includes('image')) {
-      const blob = await res.blob();
-      img.src = URL.createObjectURL(blob);
-    } else {
-      clearInterval(_maxQrInterval);
-    }
-  }, 20000);
 }
 
 // ── Битрикс24 OAuth ───────────────────────────────────────────────────────────
