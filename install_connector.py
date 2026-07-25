@@ -66,10 +66,16 @@ def register_one(suffix: str, name: str, color: str) -> None:
         "PLACEMENT_HANDLER": f"{PUBLIC_URL}/",
     })
 
-    bitrix.call("event.bind", {
-        "event":   "OnImConnectorMessageAdd",
-        "handler": f"{PUBLIC_URL}/bitrix/events",
-    })
+    try:
+        bitrix.call("event.bind", {
+            "event":   "OnImConnectorMessageAdd",
+            "handler": f"{PUBLIC_URL}/bitrix/events",
+        })
+    except RuntimeError as e:
+        if "already" in str(e).lower():
+            print(f"    event.bind: уже привязан (ok)")
+        else:
+            raise
 
     bitrix.call("imconnector.activate", {
         "CONNECTOR": connector_id,
