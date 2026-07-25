@@ -40,7 +40,7 @@ _ADMIN_PASS = os.environ.get("ADMIN_PASS", "")
 _SESSION_TTL = 8 * 3600  # 8 часов
 _sessions: dict[str, float] = {}  # token → expiry
 
-_PUBLIC_PATHS = frozenset(["/login", "/bitrix/events", "/bitrix/install", "/bitrix/oauth"])
+_PUBLIC_PATHS = frozenset(["/login", "/bitrix/events", "/bitrix/install", "/bitrix/oauth", "/incoming"])
 _PUBLIC_PREFIXES = ("/static", "/adapters/max/webhook")
 
 LINE_ID = int(os.environ.get("B24_LINE_ID", "0"))
@@ -72,7 +72,7 @@ def _valid_session(token: str | None) -> bool:
 class _AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        if path in _PUBLIC_PATHS or path.startswith("/static"):
+        if path in _PUBLIC_PATHS or any(path.startswith(p) for p in _PUBLIC_PREFIXES):
             return await call_next(request)
         if not _valid_session(request.cookies.get("mb_session")):
             if request.headers.get("upgrade", "").lower() == "websocket":
