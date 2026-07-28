@@ -1,10 +1,10 @@
 # MaxBridge
 
 Самохостинговый коннектор: один телефонный номер с тремя мессенджерами
-(**MAX**, **Telegram**, **WhatsApp**) → Открытая линия **Битрикс24** → отдел продаж.
+(**WhatsApp**, **MAX**, **Telegram**) → Открытая линия **Битрикс24** → отдел продаж.
 
 Клиент пишет **на номер** в любом мессенджере — сообщение падает в Битрикс,
-менеджер отвечает там же, ответ уходит клиенту обратно. Телефон лежит «в шкафу».
+менеджер отвечает там же, ответ уходит клиенту обратно.
 
 Аналог Wazzup/Ebox — только свой, без абонентки. Только VPS + SIM.
 
@@ -17,11 +17,15 @@
          │  (userbot-сессии на одном номере)
          ▼
     [core — FastAPI]  ←→  [Битрикс24 Открытая линия]
-         │                      ↕ imconnector API
+         │                      ↕ imconnector + messageservice API
     [SQLite: чаты, токены]  [Операторы / продавцы]
          │
     [Caddy HTTPS]  ←  веб-морда: статус, QR, вход, подсказки
 ```
+
+**Два направления:**
+- Клиент → менеджер: входящее через `imconnector.send.messages`
+- Менеджер → клиент (первым): через `messageservice` прямо из карточки лида/контакта CRM
 
 Маршрутизацию («только продавцы», «на ответственного если клиент в CRM»)
 делает **сама Открытая линия** — код этим не занимается.
@@ -54,8 +58,8 @@ curl -fsSL https://raw.githubusercontent.com/aasamets/maxbridge/main/install.sh 
   -o /tmp/install.sh && bash /tmp/install.sh
 ```
 
-Установщик интерактивно спросит домен, данные Битрикс24, VLESS-ссылку.
-Соберёт Docker-образы, запустит сервисы, покажет пароль веб-морды.
+Установщик интерактивно спросит домен, данные Битрикс24, VLESS-ссылку (для WA/TG),
+ntfy-топик для мониторинга. Соберёт Docker-образы, запустит сервисы, покажет пароль веб-морды.
 
 После установки — открой веб-морду и подключи каналы по одному.
 
@@ -99,7 +103,7 @@ curl -fsSL https://raw.githubusercontent.com/aasamets/maxbridge/main/install.sh 
 
 1. В Битрикс24: **Приложения → Разработчикам → Другое → Локальное приложение**
    - Тип: Серверное приложение
-   - Права: `imconnector, imopenlines, crm, im`
+   - Права: `imconnector, imopenlines, crm, im, messageservice`
    - URL обработчика: `https://ВАШ-ДОМЕН/bitrix/events`
 2. Скопируй Client ID и Client Secret → Настройки в веб-морде → Сохранить
 3. Нажми **Авторизовать приложение** → разреши в Битриксе (один раз)
@@ -109,8 +113,20 @@ curl -fsSL https://raw.githubusercontent.com/aasamets/maxbridge/main/install.sh 
    ```
 5. В Битрикс24: Контакт-центр → Открытые линии → привяжи коннекторы MaxBridge
 
-После OAuth токены сохраняются в SQLite и обновляются автоматически — кнопка
-«Авторизовать» нужна только при первичной настройке или смене приложения.
+После OAuth токены сохраняются в SQLite и обновляются автоматически.
+
+---
+
+## Мониторинг (ntfy)
+
+В веб-морде, в разделе **Уведомления**, вставь URL ntfy-темы —
+и при падении или восстановлении любого адаптера на телефон придёт push.
+
+Как настроить:
+1. Установи приложение **ntfy** (iOS / Android)
+2. На [ntfy.sh](https://ntfy.sh) придумай уникальную тему, например `maxbridge-x7k2qw`
+3. В приложении ntfy подпишись на эту тему
+4. В веб-морде MaxBridge вставь `https://ntfy.sh/maxbridge-x7k2qw` → нажми **Тест**
 
 ---
 
@@ -132,7 +148,7 @@ curl -fsSL https://raw.githubusercontent.com/aasamets/maxbridge/main/install.sh 
 ## Особенности в РФ
 
 - **WhatsApp** — не заблокирован, но часть VPS-провайдеров блокируют трафик.
-  Если WA не подключается: `WA_PROXY_HOST=xray` в `.env` → `docker compose up -d wa`.
+  Установщик спрашивает VLESS-ссылку при включении WA — рекомендуется задать.
 - **Telegram** — заблокирован; трафик адаптера идёт через xray VLESS-Reality.
   Нужна **VLESS-ссылка** (`vless://...`) от зарубежного сервера с Reality.
 - **MAX** — российский мессенджер, подключается напрямую без прокси.
@@ -145,11 +161,12 @@ curl -fsSL https://raw.githubusercontent.com/aasamets/maxbridge/main/install.sh 
 
 | Канал | Статус |
 |---|---|
-| WhatsApp | ✅ Работает: приём и отправка, QR-авторизация, @lid JID поддерживается |
+| WhatsApp | ✅ Работает: приём, ответ, CRM-инициация по номеру |
 | MAX | ✅ Готов: pymax WebClient, QR-авторизация через веб-морду |
 | Telegram | 🔧 Адаптер готов, нужны `api_id` / `api_hash` |
-| Битрикс24 | ✅ OAuth + imconnector + auto-refresh токенов |
-| Веб-морда | ✅ Статус каналов (WS), QR, Битрикс статус авто-определяется |
+| Битрикс24 Открытая линия | ✅ OAuth + imconnector + auto-refresh токенов |
+| Битрикс24 CRM-сообщения | ✅ messageservice: кнопка «Сообщение» в карточке лида |
+| Веб-морда | ✅ Статус (WS), QR, настройки, push-уведомления (ntfy) |
 
 ---
 
@@ -157,9 +174,9 @@ curl -fsSL https://raw.githubusercontent.com/aasamets/maxbridge/main/install.sh 
 
 | Компонент | Технология |
 |---|---|
-| Ядро | Python 3.12, FastAPI, SQLite (aiosqlite) |
-| WhatsApp | Node.js 20, [@whiskeysockets/baileys](https://github.com/WhiskeySockets/Baileys) 6.7.x |
-| MAX | Python 3.12, [pymax / maxapi-python](https://pypi.org/project/maxapi-python/) 2.3.1 |
+| Ядро | Python 3.12, FastAPI, SQLite |
+| WhatsApp | Node.js 20, [@whiskeysockets/baileys](https://github.com/WhiskeySockets/Baileys) |
+| MAX | Python 3.12, pymax WebClient |
 | Telegram | Python 3.12, [Telethon](https://github.com/LonamiWebs/Telethon) |
 | Прокси | [Xray-core](https://github.com/XTLS/Xray-core) VLESS-Reality → SOCKS5 |
 | HTTPS | [Caddy](https://caddyserver.com) (авто Let's Encrypt) |
@@ -171,9 +188,9 @@ curl -fsSL https://raw.githubusercontent.com/aasamets/maxbridge/main/install.sh 
 
 ```
 core/
-  main.py              FastAPI: /incoming, /bitrix/events, веб-морда, /api/*
-  bitrix.py            Клиент Битрикс24: OAuth, imconnector, авто-refresh токенов
-  store.py             SQLite: chat_map, seen_msg, kv (токены), adapter_state
+  main.py              FastAPI: /incoming, /bitrix/events, /bitrix/message, веб-морда, /api/*
+  bitrix.py            Клиент Битрикс24: OAuth, imconnector, messageservice, авто-refresh
+  store.py             SQLite: chat_map, seen_msg, kv (токены, ntfy URL), adapter_state
   static/              Веб-морда (index.html, style.css, app.js)
 
 adapters/
@@ -185,10 +202,10 @@ wa_adapter/
   Dockerfile           npm install + sed-патч Baileys (fetchProps graceful skip)
 
 xray/
-  config.json          Генерируется install.sh из VLESS_URL
+  config.json          Шаблон с плейсхолдерами — патчится install.sh из VLESS_URL
 
-install.sh             Интерактивный установщик (домен, Битрикс, VLESS)
-install_connector.py   Разовая регистрация коннекторов в Битрикс24
+install.sh             Интерактивный установщик (домен, Битрикс, VLESS, ntfy)
+install_connector.py   Регистрация imconnector + messageservice.sender в Битрикс24
 docker-compose.yml     Оркестрация, shared volumes (sessions, data)
 Caddyfile.template     HTTPS reverse proxy шаблон
 .env.example           Пример переменных (без секретов)
@@ -201,27 +218,15 @@ Caddyfile.template     HTTPS reverse proxy шаблон
 ### WA подключён, но сообщения не приходят в Битрикс
 
 ```bash
-# Проверить статус всех сервисов
 docker compose ps
-
-# Логи WA в реальном времени
 docker compose logs -f wa
-
-# Проверить /incoming вручную
-docker compose exec core python3 -c "
-import httpx, asyncio
-async def t():
-    r = await httpx.AsyncClient().post('http://localhost:8000/incoming', json={
-        'adapter':'whatsapp','peer_id':'+79990000000',
-        'msg_id':'test','text':'тест','phone':'+79990000000'})
-    print(r.status_code, r.text)
-asyncio.run(t())"
+docker compose logs -f core
 ```
 
 ### WA не показывает QR / не подключается
 
 ```bash
-# Проверить прокси из контейнера
+# Проверить прокси из контейнера wa
 docker compose exec wa node -e "
 const {SocksProxyAgent} = require('socks-proxy-agent');
 const agent = new SocksProxyAgent('socks5://xray:1080');
@@ -229,7 +234,7 @@ require('https').get('https://web.whatsapp.com/', {agent}, r => console.log('HTT
   .on('error', e => console.log('ERR', e.message));"
 ```
 
-Если нет прокси — добавить `WA_PROXY_HOST=xray` в `.env` и `docker compose up -d wa`.
+Если нет прокси — задать VLESS-ссылку в Настройках веб-морды и пересобрать xray.
 
 ### Коннекторы не зарегистрированы (IMCONNECTOR_NO_CORRECT_PROVIDER)
 
@@ -237,24 +242,16 @@ require('https').get('https://web.whatsapp.com/', {agent}, r => console.log('HTT
 docker compose exec core python3 install_connector.py
 ```
 
-Запускать один раз после первичного OAuth Битрикса. Повторный запуск безопасен.
+Запускать один раз после первичного OAuth. Повторный запуск безопасен.
 
 ### Telegram не подключается
 
 ```bash
-docker compose ps xray              # xray должен быть Up
-docker compose logs telegram        # смотреть ошибки Telethon
-# TG_API_ID и TG_API_HASH нужно добавить в Настройки веб-морды
+docker compose ps xray          # xray должен быть Up
+docker compose logs telegram    # смотреть ошибки Telethon
 ```
 
-### Посмотреть токены Битрикс24 в DB
-
-```bash
-docker compose exec core python3 -c "
-from core import store; store.init()
-print('access:', store.kv_get('b24_access_token')[:20] if store.kv_get('b24_access_token') else None)
-print('refresh:', store.kv_get('b24_refresh_token')[:20] if store.kv_get('b24_refresh_token') else None)"
-```
+Нужны `TG_API_ID` и `TG_API_HASH` в Настройках веб-морды + VLESS-ссылка.
 
 ---
 
@@ -267,8 +264,8 @@ docker compose ps                        # статус всех сервисо�
 docker compose logs -f                   # все логи
 docker compose logs -f wa                # логи одного сервиса
 docker compose up -d --build             # пересборка всего
-docker compose up -d --build core wa     # пересборка отдельных сервисов
-docker compose exec core bash            # shell внутри контейнера
+docker compose up -d --build core        # пересборка только ядра
+docker compose exec core python3 install_connector.py  # (ре)регистрация коннекторов
 ```
 
 ---
@@ -278,7 +275,7 @@ docker compose exec core bash            # shell внутри контейнер
 - **Серая зона.** Вход под обычным аккаунтом нарушает правила WhatsApp, Telegram и MAX.
   Аккаунт могут заблокировать. Разумный темп, без рассылок, один номер — один аккаунт.
 - **Сессии.** При потере файлов сессий (`/sessions/`) потребуется переавторизация
-  через веб-морду. В Docker — только named volumes, никаких bind-mount в /tmp.
+  через веб-морду. В Docker — только named volumes.
 - **Персистентность.** Не удалять volumes `maxbridge_data` и `maxbridge_sessions` —
   там OAuth-токены Битрикса и сессии мессенджеров.
 
