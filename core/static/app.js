@@ -467,6 +467,56 @@ async function checkB24Status() {
   } catch (_) {}
 }
 
+// ── ntfy уведомления ──────────────────────────────────────────────────────────
+
+let _ntfySaveTimer = null;
+
+async function loadNtfy() {
+  try {
+    const data = await fetch('/api/ntfy').then(r => r.json());
+    const input = document.getElementById('ntfy-url');
+    if (input) input.value = data.url || '';
+    _updateNtfyStatus(data.url || '');
+  } catch (_) {}
+}
+
+function _updateNtfyStatus(url) {
+  const dot   = document.getElementById('dot-ntfy');
+  const label = document.getElementById('label-ntfy');
+  if (!dot) return;
+  if (url) {
+    dot.className   = 'status-dot green';
+    label.textContent = 'Настроено';
+  } else {
+    dot.className   = 'status-dot';
+    label.textContent = 'Не настроено';
+  }
+}
+
+function onNtfyInput() {
+  clearTimeout(_ntfySaveTimer);
+  _ntfySaveTimer = setTimeout(async () => {
+    const url = (document.getElementById('ntfy-url')?.value || '').trim();
+    await fetch('/api/ntfy', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({url}),
+    });
+    _updateNtfyStatus(url);
+  }, 600);
+}
+
+async function testNtfy() {
+  const btn = document.querySelector('.ntfy-field .btn');
+  if (btn) { btn.disabled = true; btn.textContent = '...'; }
+  try {
+    const res = await fetch('/api/ntfy/test', {method: 'POST'}).then(r => r.json());
+    toast(res.ok ? 'Тест отправлен — проверьте телефон' : 'Ошибка: ' + (res.error || 'ntfy URL не задан'));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Тест'; }
+  }
+}
+
 // ── Инициализация ─────────────────────────────────────────────────────────────
 
 async function loadPhones() {
@@ -479,3 +529,4 @@ async function loadPhones() {
 connectWS();
 checkB24Status();
 loadPhones();
+loadNtfy();

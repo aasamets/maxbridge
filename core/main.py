@@ -178,6 +178,10 @@ async def _poll_proxy() -> None:
 
 @app.on_event("startup")
 async def _startup():
+    global NTFY_URL
+    kv_ntfy = store.kv_get("ntfy_url")
+    if kv_ntfy is not None:
+        NTFY_URL = kv_ntfy
     asyncio.create_task(_poll_adapters())
     asyncio.create_task(_poll_proxy())
 
@@ -349,6 +353,29 @@ async def set_adapter_phone(req: Request):
         _adapter_phones[adapter] = phone
         await _broadcast({"type": "phone", "adapter": adapter, "phone": phone})
         print(f"[core] {adapter} phone: {phone}")
+    return {"ok": True}
+
+
+@app.get("/api/ntfy")
+async def get_ntfy():
+    return {"url": NTFY_URL}
+
+
+@app.post("/api/ntfy")
+async def save_ntfy(req: Request):
+    global NTFY_URL
+    body = await req.json()
+    url = str(body.get("url", "")).strip()
+    NTFY_URL = url
+    store.kv_set("ntfy_url", url)
+    return {"ok": True}
+
+
+@app.post("/api/ntfy/test")
+async def test_ntfy():
+    if not NTFY_URL:
+        return JSONResponse({"ok": False, "error": "ntfy URL не задан"}, status_code=400)
+    await _ntfy_send("MaxBridge: тест", "Уведомления работают корректно ✓")
     return {"ok": True}
 
 

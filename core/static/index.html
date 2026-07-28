@@ -177,6 +177,45 @@
         </div>
       </section>
 
+      <!-- Уведомления -->
+      <section class="section">
+        <h2 class="section-title">Уведомления</h2>
+        <div class="card card-bitrix">
+          <div class="card-header">
+            <div class="card-icon" style="background:#5e5ce6;font-size:20px;line-height:1;padding-top:2px">🔔</div>
+            <div class="card-info">
+              <div class="card-name-row">
+                <div class="card-name">Push-уведомления</div>
+                <button class="btn-help" onclick="toggleHelp('ntfy')" id="help-btn-ntfy">?</button>
+              </div>
+              <div class="status-row">
+                <span class="status-dot" id="dot-ntfy"></span>
+                <span class="status-label" id="label-ntfy">Не настроено</span>
+              </div>
+            </div>
+          </div>
+          <div class="help-panel" id="help-ntfy">
+            <div class="help-title">Как настроить уведомления на телефон</div>
+            <ul class="help-steps">
+              <li><span class="help-step-num">1</span><span>Установите приложение <strong>ntfy</strong> на телефон — <strong>iOS App Store</strong> или <strong>Google Play</strong>.</span></li>
+              <li><span class="help-step-num">2</span><span>Откройте <strong>ntfy.sh</strong> и придумайте уникальное название темы, например: <code>maxbridge-mycompany</code>. Регистрация не нужна.</span></li>
+              <li><span class="help-step-num">3</span><span>В приложении ntfy нажмите <strong>+</strong>, введите ту же тему → <strong>Подписаться</strong>. Телефон начнёт получать уведомления по этой теме.</span></li>
+              <li><span class="help-step-num">4</span><span>Вставьте полный URL темы в поле ниже: <code>https://ntfy.sh/ваша-тема</code> → нажмите <strong>Тест</strong>.</span></li>
+            </ul>
+            <div class="help-note">Тема публична — используйте случайный суффикс для приватности, например: <code>maxbridge-x7k2qw</code>. Можно развернуть свой ntfy-сервер вместо ntfy.sh.</div>
+          </div>
+          <div class="card-body">
+            <div class="ntfy-field">
+              <input class="input" id="ntfy-url" type="url"
+                     placeholder="https://ntfy.sh/maxbridge-…" autocomplete="off"
+                     oninput="onNtfyInput()">
+              <button class="btn btn-secondary btn-sm" onclick="testNtfy()">Тест</button>
+            </div>
+            <span style="display:block;margin-top:6px;font-size:12px;color:var(--text-3)">Сохраняется автоматически</span>
+          </div>
+        </div>
+      </section>
+
       <!-- Настройки (скрытые по умолчанию) -->
       <section class="section settings-section" id="settings-section" style="display:none">
         <h2 class="section-title">Настройки</h2>

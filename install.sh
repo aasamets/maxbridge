@@ -227,14 +227,25 @@ if read_yn "Включить WhatsApp?"; then WA_ENABLED=true; ok "WhatsApp: в�
 if read_yn "Включить MAX?";      then MAX_ENABLED=true; ok "MAX: включён (QR-авторизация через веб-морду)"; fi
 if read_yn "Включить Telegram?"; then TG_ENABLED=true;  ok "Telegram: включён"; fi
 
-# ── Секция 4: Telegram (если включён) ────────────────────────────────────────
+# ── Секция 3.5: VLESS-прокси (если WA или TG) ────────────────────────────────
+if [[ "$WA_ENABLED" == "true" || "$TG_ENABLED" == "true" ]]; then
+  step "Прокси (Xray VLESS)"
+  echo -e "  ${Y}WhatsApp и Telegram работают через Xray SOCKS5 прокси.${N}"
+  echo -e "  VPS-провайдеры часто блокируют прямые соединения с WA/TG."
+  echo -e "  Формат: vless://UUID@HOST:PORT?security=reality&..."
+  echo -e "  ${Y}Оставьте пустым чтобы пропустить — можно задать позже.${N}"
+  echo
+  read_long "Вставьте VLESS-ссылку целиком (Enter — пропустить)"
+  VLESS_URL="$_VAL"
+  [[ -n "$VLESS_URL" ]] && ok "VLESS: задан (${#VLESS_URL} символов)" || ok "VLESS: пропущено"
+fi
+
+# ── Секция 4: Telegram API (если включён) ────────────────────────────────────
 if [[ "$TG_ENABLED" == "true" ]]; then
   while true; do
-    step "Telegram — настройки"
+    step "Telegram — API ключи"
     echo
     echo -e "  ${Y}Нужен USERBOT-доступ (не бот-токен от @BotFather).${N}"
-    echo -e "  Это позволяет принимать сообщения на номер телефона."
-    echo
     echo -e "  Как получить api_id и api_hash:"
     echo -e "   1. Зайдите на ${C}my.telegram.org${N} — тем же номером что у аккаунта"
     echo -e "   2. ${C}API development tools${N} → Create application (название любое)"
@@ -248,16 +259,9 @@ if [[ "$TG_ENABLED" == "true" ]]; then
     TG_API_HASH="$_VAL"
 
     echo
-    echo -e "  ${Y}VLESS-прокси:${N} обязателен в РФ, Telegram заблокирован."
-    echo -e "  Формат: vless://UUID@HOST:PORT?security=reality&..."
-    read_long "Вставьте VLESS-ссылку целиком и нажмите Enter"
-    VLESS_URL="$_VAL"
-
-    echo
     echo -e "  ${BOLD}Проверьте:${N}"
     echo -e "  api_id:   ${TG_API_ID:-${Y}пусто${N}}"
     echo -e "  api_hash: ${TG_API_HASH:0:8}... (${#TG_API_HASH} символов)"
-    echo -e "  VLESS:    ${VLESS_URL:0:50}… (${#VLESS_URL} символов)"
     echo
     printf "  Всё верно? [Enter — продолжить, R — повторить]: "
     IFS= read -r _ans </dev/tty
@@ -341,7 +345,7 @@ sed \
 spinner_stop ok "Caddyfile сгенерирован"
 
 # ── Xray конфиг ───────────────────────────────────────────────────────────────
-if [[ "$TG_ENABLED" == "true" && -n "${VLESS_URL:-}" ]]; then
+if [[ ("$WA_ENABLED" == "true" || "$TG_ENABLED" == "true") && -n "${VLESS_URL:-}" ]]; then
   spinner_start "Настройка Xray (Telegram proxy)..."
   python3 - <<PYEOF 2>>"$BUILD_LOG" && spinner_stop ok "Xray настроен" || spinner_stop fail "Xray — ошибка парсинга VLESS"
 import re, json, sys
@@ -404,7 +408,7 @@ diag "Контейнер: caddy"  "docker compose ps caddy  2>/dev/null | grep -
 [[ "$WA_ENABLED"  == "true" ]] && diag "Контейнер: wa"       "docker compose ps wa       2>/dev/null | grep -qiE 'running|up'"
 [[ "$MAX_ENABLED" == "true" ]] && diag "Контейнер: max"      "docker compose ps max      2>/dev/null | grep -qiE 'running|up'"
 [[ "$TG_ENABLED"  == "true" ]] && diag "Контейнер: telegram" "docker compose ps telegram 2>/dev/null | grep -qiE 'running|up'"
-[[ "$TG_ENABLED"  == "true" ]] && diag "Контейнер: xray"    "docker compose ps xray    2>/dev/null | grep -qiE 'running|up'"
+[[ "$WA_ENABLED" == "true" || "$TG_ENABLED" == "true" ]] && diag "Контейнер: xray" "docker compose ps xray 2>/dev/null | grep -qiE 'running|up'"
 
 if host "$PUBLIC_DOMAIN" >> "$BUILD_LOG" 2>&1 || nslookup "$PUBLIC_DOMAIN" >> "$BUILD_LOG" 2>&1; then
   ok "DNS: $PUBLIC_DOMAIN резолвится"
