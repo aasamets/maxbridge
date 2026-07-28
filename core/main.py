@@ -110,8 +110,12 @@ async def _ntfy_send(title: str, message: str, priority: str = "default") -> Non
         return
     try:
         async with httpx.AsyncClient(timeout=5) as cli:
-            await cli.post(NTFY_URL, content=message.encode(),
-                           headers={"Title": title, "Priority": priority, "Tags": "satellite"})
+            await cli.post(NTFY_URL, json={
+                "message": message,
+                "title": title,
+                "priority": priority,
+                "tags": ["satellite"],
+            })
     except Exception:
         pass
 
@@ -377,11 +381,12 @@ async def test_ntfy():
         return JSONResponse({"ok": False, "error": "ntfy URL не задан"}, status_code=400)
     try:
         async with httpx.AsyncClient(timeout=8) as cli:
-            r = await cli.post(
-                NTFY_URL,
-                content="Уведомления работают корректно ✓".encode(),
-                headers={"Title": "MaxBridge: тест", "Priority": "default", "Tags": "satellite"},
-            )
+            r = await cli.post(NTFY_URL, json={
+                "message": "Уведомления работают корректно ✓",
+                "title": "MaxBridge: тест",
+                "priority": "default",
+                "tags": ["satellite"],
+            })
         if r.status_code >= 300:
             return JSONResponse(
                 {"ok": False, "error": f"ntfy вернул {r.status_code}: {r.text[:120]}"},
