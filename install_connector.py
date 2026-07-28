@@ -144,6 +144,36 @@ def register_one(suffix: str, name: str, color: str, icon: str) -> None:
     print(f"  ✔ {name} зарегистрирован")
 
 
+def register_message_sender(suffix: str, name: str) -> None:
+    """Регистрирует провайдера в messageservice — для кнопки 'Сообщение' в карточке CRM."""
+    code = f"{os.environ.get('B24_CONNECTOR_ID', 'maxbridge')}_{suffix}"
+    print(f"  MessageService: {code} ({name})…")
+    try:
+        bitrix.call("messageservice.sender.add", {
+            "CODE":    code,
+            "TYPE":    "SMS",
+            "NAME":    f"MaxBridge {name}",
+            "HANDLER": f"{PUBLIC_URL}/bitrix/message",
+        })
+        print(f"  ✔ MessageService {name} зарегистрирован")
+    except RuntimeError as e:
+        err = str(e).lower()
+        if "already" in err or "exist" in err or "duplicate" in err:
+            # Уже зарегистрирован — обновляем HANDLER на случай смены домена
+            try:
+                bitrix.call("messageservice.sender.update", {
+                    "CODE":    code,
+                    "HANDLER": f"{PUBLIC_URL}/bitrix/message",
+                })
+                print(f"  ✔ MessageService {name} — HANDLER обновлён")
+            except Exception:
+                print(f"    уже зарегистрирован (ok)")
+        else:
+            print(f"  ✖ MessageService {name}: {e}")
+            print(f"    Убедись что в локальном приложении Битрикс24 добавлен скоуп 'messageservice'")
+            print(f"    и переавторизуй приложение через кнопку в веб-морде.")
+
+
 def main() -> None:
     enabled = [c for c in _CONNECTORS
                if os.environ.get(c["env"], "true").lower() == "true"]
@@ -155,6 +185,12 @@ def main() -> None:
     print(f"Регистрация {len(enabled)} коннектора(ов) на линии #{LINE_ID}…\n")
     for c in enabled:
         register_one(c["id"], c["name"], c["color"], c["icon"])
+
+    # MessageService — для кнопки «Сообщение» в карточке CRM лида/контакта
+    print(f"\nРегистрация MessageService провайдеров…\n")
+    for c in enabled:
+        if c["id"] in ("wa", "max"):  # TG не поддерживает отправку по телефону
+            register_message_sender(c["id"], c["name"])
 
     print("\nГотово.")
     print("Следующий шаг: CRM → Контакт-центр → привяжи коннекторы к своей линии.")

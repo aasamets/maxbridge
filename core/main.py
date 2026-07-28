@@ -41,7 +41,7 @@ _SESSION_TTL = 8 * 3600  # 8 часов
 _sessions: dict[str, float] = {}  # token → expiry
 
 _PUBLIC_PATHS = frozenset(["/login", "/bitrix/events", "/bitrix/install", "/bitrix/oauth",
-                           "/incoming", "/bitrix/app", "/api/adapter_phone"])
+                           "/incoming", "/bitrix/app", "/api/adapter_phone", "/bitrix/message"])
 _PUBLIC_PREFIXES = ("/static", "/adapters/max/webhook")
 
 LINE_ID = int(os.environ.get("B24_LINE_ID", "0"))
@@ -436,6 +436,65 @@ a{{color:#3d5c82;text-decoration:none}}
 <div class="footer"><a href="/" target="_blank">Открыть панель управления</a></div>
 </body></html>"""
     return HTMLResponse(content=html)
+
+
+# ── Исходящие из CRM (messageservice handler) ─────────────────
+@app.post("/bitrix/message")
+async def bitrix_message_handler(req: Request):
+    """
+    Битрикс24 вызывает этот URL когда менеджер отправляет сообщение
+    из карточки CRM (кнопка «Сообщение» → выбор MaxBridge WA/MAX).
+    Поля формы: code, message_to (телефон), message_body, message_id.
+    """
+    form    = await req.form()
+    code    = str(form.get("code", ""))
+    phone   = str(form.get("message_to", "")).strip()
+    text    = str(form.get("message_body", "")).strip()
+    msg_id  = str(form.get("message_id", ""))
+
+    if not phone or not text:
+        return JSONResponse({"status": "error", "error": "empty phone or text"}, status_code=400)
+
+    # Определяем адаптер по коду провайдера
+    if "_wa" in code:
+        adapter_name = "whatsapp"
+        peer_id      = phone  # WA-адаптер сам конвертирует в @s.whatsapp.net
+    elif "_max" in code:
+        adapter_name = "max"
+        # MAX не поддерживает отправку по телефону незнакомому — ищем в chat_map
+        peer_id = store.find_peer_by_phone("max", phone)
+        if not peer_id:
+            return JSONResponse(
+                {"status": "error",
+                 "error": f"MAX: клиент с номером {phone} ещё не писал нам — не можем инициировать диалог"},
+                status_code=400,
+            )
+    else:
+        return JSONResponse({"status": "error", "error": f"unknown provider code: {code}"}, status_code=400)
+
+    adapter_url = ADAPTERS.get(adapter_name)
+    if not adapter_url:
+        return JSONResponse({"status": "error", "error": f"адаптер {adapter_name} не настроен"}, status_code=503)
+
+    async with httpx.AsyncClient(timeout=30) as cli:
+        r = await cli.post(f"{adapter_url}/send", json={"peer_id": peer_id, "text": text})
+
+    if r.status_code != 200:
+        return JSONResponse({"status": "error", "error": r.text}, status_code=502)
+
+    # Подтверждение доставки (игнорируем ошибки — основная отправка уже прошла)
+    if msg_id:
+        try:
+            bitrix.call("messageservice.message.status.update", {
+                "CODE":       code,
+                "MESSAGE_ID": msg_id,
+                "STATUS":     "delivered",
+            })
+        except Exception:
+            pass
+
+    print(f"[core] msgservice → {adapter_name} phone={phone} text={text[:40]!r}")
+    return {"status": "success"}
 
 
 # ── Входящие (клиент → Битрикс) ───────────────────────────────

@@ -113,6 +113,17 @@ def set_adapter_state(adapter: str, state: str) -> None:
         )
 
 
+def find_peer_by_phone(adapter: str, phone: str) -> str | None:
+    """Ищет peer_id по номеру телефона (для исходящих из CRM через messageservice)."""
+    normalized = "+" + phone.lstrip("+")
+    with _lock, _conn() as c:
+        row = c.execute(
+            "SELECT peer_id FROM chat_map WHERE adapter=? AND peer_phone=? LIMIT 1",
+            (adapter, normalized),
+        ).fetchone()
+    return row["peer_id"] if row else None
+
+
 def get_adapter_states() -> dict[str, str]:
     with _lock, _conn() as c:
         rows = c.execute("SELECT adapter, state FROM adapter_state").fetchall()
