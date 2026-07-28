@@ -507,6 +507,18 @@ function onNtfyInput() {
 }
 
 async function testNtfy() {
+  // Сохраняем URL немедленно, не ждём debounce
+  clearTimeout(_ntfySaveTimer);
+  const url = (document.getElementById('ntfy-url')?.value || '').trim();
+  if (url) {
+    await fetch('/api/ntfy', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({url}),
+    });
+    _updateNtfyStatus(url);
+  }
+
   const btn = document.querySelector('.ntfy-field .btn');
   if (btn) { btn.disabled = true; btn.textContent = '...'; }
   try {

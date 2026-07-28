@@ -375,8 +375,21 @@ async def save_ntfy(req: Request):
 async def test_ntfy():
     if not NTFY_URL:
         return JSONResponse({"ok": False, "error": "ntfy URL не задан"}, status_code=400)
-    await _ntfy_send("MaxBridge: тест", "Уведомления работают корректно ✓")
-    return {"ok": True}
+    try:
+        async with httpx.AsyncClient(timeout=8) as cli:
+            r = await cli.post(
+                NTFY_URL,
+                content="Уведомления работают корректно ✓".encode(),
+                headers={"Title": "MaxBridge: тест", "Priority": "default", "Tags": "satellite"},
+            )
+        if r.status_code >= 300:
+            return JSONResponse(
+                {"ok": False, "error": f"ntfy вернул {r.status_code}: {r.text[:120]}"},
+                status_code=502,
+            )
+        return {"ok": True}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=502)
 
 
 @app.get("/api/phones")
