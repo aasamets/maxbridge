@@ -108,6 +108,16 @@ async def _run_client() -> None:
         global _state, _current_qr_png
         _state = "connected"
         _current_qr_png = None
+        # Авто-определение номера из сессии
+        try:
+            me = client.me
+            if me and getattr(me, "phone", None):
+                phone = f"+{me.phone}"
+                async with httpx.AsyncClient(timeout=5) as _cli:
+                    await _cli.post(f"{CORE_URL}/api/adapter_phone",
+                                    json={"adapter": ADAPTER_NAME, "phone": phone})
+        except Exception:
+            pass
 
     @_client.on_message()
     async def on_message(msg: Message, client: WebClient) -> None:

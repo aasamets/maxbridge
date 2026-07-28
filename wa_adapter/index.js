@@ -88,6 +88,15 @@ async function connectWA() {
       currentQR = null;
       state     = 'connected';
       console.log('[WA] Подключён');
+      // Авто-определение номера из сессии: sock.user.id = "79991234567:1@s.whatsapp.net"
+      if (sock.user && sock.user.id) {
+        const m = sock.user.id.match(/^(\d+)/);
+        if (m) {
+          const phone = '+' + m[1];
+          axios.post(`${CORE_URL}/api/adapter_phone`, { adapter: ADAPTER_NAME, phone })
+            .catch(e => console.warn('[WA] Не удалось отправить номер в core:', e.message));
+        }
+      }
     }
 
     if (connection === 'close') {
@@ -98,8 +107,9 @@ async function connectWA() {
       state = 'needs_auth';
       console.log(`[WA] Отключён (${code}), повтор=${!loggedOut}`);
       if (loggedOut) {
-        // Сессия сброшена на стороне WhatsApp — чистим локальные файлы
+        // Сессия сброшена на стороне WhatsApp — чистим локальные файлы и перезапускаем
         fs.rmSync(SESSION_DIR, { recursive: true, force: true });
+        setTimeout(startWA, 5000);
       } else {
         setTimeout(connectWA, 5000);
       }

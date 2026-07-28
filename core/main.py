@@ -40,14 +40,18 @@ _ADMIN_PASS = os.environ.get("ADMIN_PASS", "")
 _SESSION_TTL = 8 * 3600  # 8 часов
 _sessions: dict[str, float] = {}  # token → expiry
 
-_PUBLIC_PATHS = frozenset(["/login", "/bitrix/events", "/bitrix/install", "/bitrix/oauth", "/incoming"])
+_PUBLIC_PATHS = frozenset(["/login", "/bitrix/events", "/bitrix/install", "/bitrix/oauth",
+                           "/incoming", "/bitrix/app", "/api/adapter_phone"])
 _PUBLIC_PREFIXES = ("/static", "/adapters/max/webhook")
 
 LINE_ID = int(os.environ.get("B24_LINE_ID", "0"))
+NTFY_URL = os.environ.get("NTFY_URL", "")
 
 _PROXY_SOCKS = "socks5://xray:1080"
 _PROXY_TEST_URL = "https://www.youtube.com"
 _proxy_status: dict = {"state": "checking", "ok": None, "latency_ms": None}
+_prev_adapter_states: dict[str, str] = {}
+_adapter_phones: dict[str, str] = {}
 
 ADAPTERS: dict[str, str] = {}
 for _pair in os.environ.get("ADAPTERS", "").split(","):
@@ -101,8 +105,20 @@ async def _broadcast(data: dict) -> None:
     _ws_clients.difference_update(dead)
 
 
+async def _ntfy_send(title: str, message: str, priority: str = "default") -> None:
+    if not NTFY_URL:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=5) as cli:
+            await cli.post(NTFY_URL, content=message.encode(),
+                           headers={"Title": title, "Priority": priority, "Tags": "satellite"})
+    except Exception:
+        pass
+
+
 async def _poll_adapters() -> None:
-    """Каждые 5 секунд опрашивает адаптеры и рассылает статусы через WebSocket."""
+    """Каждые 5 секунд опрашивает адаптеры, рассылает статусы через WS, шлёт ntfy-алерты."""
+    global _prev_adapter_states
     while True:
         statuses: dict[str, str] = {}
         async with httpx.AsyncClient(timeout=5) as cli:
@@ -112,8 +128,25 @@ async def _poll_adapters() -> None:
                     statuses[name] = r.json().get("state", "unknown")
                 except Exception:
                     statuses[name] = "unavailable"
+
         for name, state in statuses.items():
             store.set_adapter_state(name, state)
+            prev = _prev_adapter_states.get(name)
+            if prev is not None and prev != state:
+                svc = {"whatsapp": "wa", "max": "max", "telegram": "telegram"}.get(name, name)
+                if state == "unavailable":
+                    asyncio.create_task(_ntfy_send(
+                        f"MaxBridge: {name} недоступен",
+                        f"Адаптер {name} не отвечает. Проверьте: docker compose logs {svc}",
+                        "high",
+                    ))
+                elif state == "connected" and prev != "connected":
+                    asyncio.create_task(_ntfy_send(
+                        f"MaxBridge: {name} подключён",
+                        f"Адаптер {name} снова работает нормально.",
+                    ))
+
+        _prev_adapter_states = dict(statuses)
         await _broadcast({"type": "status", "adapters": statuses})
         await asyncio.sleep(5)
 
@@ -302,6 +335,80 @@ async def _handle_oauth_code(code: str | None, error: str | None, path: str):
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
     return RedirectResponse("/?oauth=ok")
+
+
+# ── Номера телефонов адаптеров (авто-определение) ─────────────
+@app.post("/api/adapter_phone")
+async def set_adapter_phone(req: Request):
+    """Адаптер сообщает свой номер после успешного подключения."""
+    body    = await req.json()
+    adapter = str(body.get("adapter", ""))
+    phone   = str(body.get("phone", ""))
+    if adapter and phone:
+        store.kv_set(f"{adapter}_phone", phone)
+        _adapter_phones[adapter] = phone
+        await _broadcast({"type": "phone", "adapter": adapter, "phone": phone})
+        print(f"[core] {adapter} phone: {phone}")
+    return {"ok": True}
+
+
+@app.get("/api/phones")
+async def get_phones():
+    result: dict[str, str] = {}
+    for name in ADAPTERS:
+        p = store.kv_get(f"{name}_phone")
+        if p:
+            result[name] = p
+    return result
+
+
+@app.get("/bitrix/app", response_class=HTMLResponse)
+async def bitrix_app():
+    """Страница для Bitrix24 iframe (PLACEMENT_HANDLER). Без авторизации."""
+    states = store.get_adapter_states()
+    _NAMES  = {"whatsapp": "WhatsApp", "max": "MAX", "telegram": "Telegram"}
+    _DOTS   = {"connected": "#34c759", "needs_auth": "#ff9f0a"}
+    _LABELS = {"connected": "Подключён", "needs_auth": "Ожидает авторизации",
+               "unavailable": "Недоступен", "unknown": "Неизвестно"}
+
+    rows = []
+    for adapter, state_val in states.items():
+        dot   = _DOTS.get(state_val, "#8e8e93")
+        label = _LABELS.get(state_val, state_val)
+        name  = _NAMES.get(adapter, adapter)
+        phone = store.kv_get(f"{adapter}_phone") or ""
+        phone_span = f" <span style='color:#8e8e93'>· {phone}</span>" if phone else ""
+        rows.append(
+            f'<div class="row">'
+            f'<div class="dot" style="background:{dot}"></div>'
+            f'<span class="name">{name}{phone_span}</span>'
+            f'<span class="status">{label}</span>'
+            f'</div>'
+        )
+
+    rows_html = "\n".join(rows) if rows else "<p class='empty'>Адаптеры не настроены</p>"
+    html = f"""<!DOCTYPE html>
+<html lang="ru"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MaxBridge</title>
+<style>
+body{{font-family:-apple-system,BlinkMacSystemFont,sans-serif;margin:0;padding:16px;background:#f5f5f7;color:#1d1d1f;font-size:14px}}
+h3{{font-size:15px;font-weight:600;margin:0 0 12px}}
+.row{{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#fff;border-radius:10px;margin-bottom:8px;box-shadow:0 1px 4px rgba(0,0,0,.06)}}
+.dot{{width:8px;height:8px;border-radius:50%;flex-shrink:0}}
+.name{{font-weight:500}}
+.status{{margin-left:auto;color:#8e8e93;font-size:12px}}
+.empty{{color:#8e8e93;font-size:13px}}
+.footer{{margin-top:14px;font-size:12px;color:#8e8e93;text-align:center}}
+a{{color:#3d5c82;text-decoration:none}}
+</style></head>
+<body>
+<h3>MaxBridge</h3>
+{rows_html}
+<div class="footer"><a href="/" target="_blank">Открыть панель управления</a></div>
+</body></html>"""
+    return HTMLResponse(content=html)
 
 
 # ── Входящие (клиент → Битрикс) ───────────────────────────────

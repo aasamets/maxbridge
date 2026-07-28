@@ -25,6 +25,7 @@ const STATE_DOT = {
 // ── State + timers ────────────────────────────────────────────────────────────
 
 const _lastState    = {};  // { adapter: state }
+const _adapterPhones = {}; // { adapter: phone } — авто-определяется после подключения
 const _pendingRetry = {};  // { adapter: { action, phone, startedAt } }
 const _retryTimers  = {};
 const _qrTimers     = {};  // QR auto-refresh timers
@@ -95,6 +96,14 @@ function connectWS() {
     if (msg.type === 'proxy') {
       updateProxyCard(msg.status);
     }
+    if (msg.type === 'phone') {
+      _adapterPhones[msg.adapter] = msg.phone;
+      // Обновить карточку если уже в connected-состоянии
+      if (_lastState[msg.adapter] === 'connected') {
+        const body = document.getElementById(`body-${msg.adapter}`);
+        if (body) body.innerHTML = renderBody(msg.adapter, 'connected');
+      }
+    }
   };
 
   ws.onclose = () => setTimeout(connectWS, 3000);
@@ -136,11 +145,15 @@ function updateCard(name, state) {
 
 function renderBody(name, state) {
   if (state === 'connected') {
+    const phone = _adapterPhones[name]
+      ? `<div class="connected-row"><span class="connected-text" style="font-size:13px;color:var(--text-3)">${esc(_adapterPhones[name])}</span></div>`
+      : '';
     return `<div class="connected-state">
       <div class="connected-row">
         <span class="connected-check">✓</span>
         <span class="connected-text">Подключён и принимает сообщения</span>
       </div>
+      ${phone}
       <button class="btn btn-secondary" onclick="disconnectAdapter('${name}')">Отключить</button>
     </div>`;
   }
@@ -456,5 +469,13 @@ async function checkB24Status() {
 
 // ── Инициализация ─────────────────────────────────────────────────────────────
 
+async function loadPhones() {
+  try {
+    const phones = await fetch('/api/phones').then(r => r.json());
+    Object.assign(_adapterPhones, phones);
+  } catch (_) {}
+}
+
 connectWS();
 checkB24Status();
+loadPhones();
