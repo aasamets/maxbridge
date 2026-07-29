@@ -191,6 +191,12 @@ async def send(req: Request):
                 return JSONResponse({"error": f"Пользователь {peer_id} не найден в MAX"}, status_code=404)
             me = _client.me
             chat_id_int = _client.get_chat_id(me.contact.id, user.id)
+            # При старте клиента чаты ещё не загружены — get_chat_id возвращает 0
+            if chat_id_int == 0:
+                return JSONResponse(
+                    {"error": "Чат не найден (клиент только запустился, повторите через 10–15 секунд)"},
+                    status_code=503,
+                )
         else:
             chat_id_int = int(peer_id)
         await _client.send_message(chat_id_int, text)
