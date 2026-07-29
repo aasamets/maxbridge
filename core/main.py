@@ -469,6 +469,7 @@ async def bitrix_message_handler(req: Request):
     phone   = str(form.get("message_to", "")).strip()
     text    = str(form.get("message_body", "")).strip()
     msg_id  = str(form.get("message_id", ""))
+    print(f"[bitrix/message] code={code!r} phone={phone!r} msg_id={msg_id!r} fields={list(form.keys())}")
 
     if not phone or not text:
         return JSONResponse({"status": "error", "error": "empty phone or text"}, status_code=400)
@@ -496,16 +497,19 @@ async def bitrix_message_handler(req: Request):
     if r.status_code != 200:
         return JSONResponse({"status": "error", "error": r.text}, status_code=502)
 
-    # Подтверждение доставки (игнорируем ошибки — основная отправка уже прошла)
+    # Подтверждение доставки
     if msg_id:
         try:
-            bitrix.call("messageservice.message.status.update", {
+            result = bitrix.call("messageservice.message.status.update", {
                 "CODE":       code,
                 "MESSAGE_ID": msg_id,
                 "STATUS":     "delivered",
             })
-        except Exception:
-            pass
+            print(f"[bitrix/message] status.update OK: {result}")
+        except Exception as e:
+            print(f"[bitrix/message] status.update FAILED: {e}")
+    else:
+        print(f"[bitrix/message] msg_id пустой — status.update не вызывается")
 
     print(f"[core] msgservice → {adapter_name} phone={phone} text={text[:40]!r}")
     return {"status": "success"}
