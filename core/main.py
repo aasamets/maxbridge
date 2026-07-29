@@ -528,19 +528,21 @@ async def bitrix_message_handler(req: Request):
         seen_owners.add(owner_key)
         try:
             fields: dict = {
-                "OWNER_TYPE_ID":  int(owner_type),
-                "OWNER_ID":       int(owner_id),
-                "TYPE_ID":        4,
-                "SUBJECT":        f"[{adapter_label}] {phone_e164}",
-                "DESCRIPTION":    text,
-                "DIRECTION":      "2",
-                "COMPLETED":      "Y",
-                "COMMUNICATIONS": [{"VALUE": phone_e164, "TYPE": "PHONE"}],
+                "OWNER_TYPE_ID": int(owner_type),
+                "OWNER_ID":      int(owner_id),
+                "TYPE_ID":       4,
+                "SUBJECT":       f"[{adapter_label}] {phone_e164}",
+                "DESCRIPTION":   text,
+                "DIRECTION":     "2",
+                "COMPLETED":     "Y",
             }
             if auth_user_id:
                 fields["RESPONSIBLE_ID"] = auth_user_id
             result = bitrix.call("crm.activity.add", {"fields": fields})
-            print(f"[bitrix/message] crm.activity.add OK id={result} owner={owner_key}")
+            if isinstance(result, int):
+                print(f"[bitrix/message] crm.activity.add OK activity_id={result} owner={owner_key}")
+            else:
+                print(f"[bitrix/message] crm.activity.add unexpected result={result} owner={owner_key}")
         except Exception as e:
             print(f"[bitrix/message] crm.activity.add FAILED owner={owner_key}: {e}")
 
