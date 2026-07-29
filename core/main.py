@@ -530,7 +530,7 @@ async def bitrix_message_handler(req: Request):
             fields: dict = {
                 "OWNER_TYPE_ID": int(owner_type),
                 "OWNER_ID":      int(owner_id),
-                "TYPE_ID":       4,
+                "TYPE_ID":       1,
                 "SUBJECT":       f"[{adapter_label}] {phone_e164}",
                 "DESCRIPTION":   text,
                 "DIRECTION":     "2",
