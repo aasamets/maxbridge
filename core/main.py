@@ -469,8 +469,6 @@ async def bitrix_message_handler(req: Request):
     phone   = str(form.get("message_to", "")).strip()
     text    = str(form.get("message_body", "")).strip()
     msg_id  = str(form.get("message_id", ""))
-    print(f"[bitrix/message] code={code!r} phone={phone!r} msg_id={msg_id!r} fields={list(form.keys())}")
-
     if not phone or not text:
         return JSONResponse({"status": "error", "error": "empty phone or text"}, status_code=400)
 
@@ -500,16 +498,44 @@ async def bitrix_message_handler(req: Request):
     # Подтверждение доставки
     if msg_id:
         try:
-            result = bitrix.call("messageservice.message.status.update", {
+            bitrix.call("messageservice.message.status.update", {
                 "CODE":       code,
                 "MESSAGE_ID": msg_id,
                 "STATUS":     "delivered",
             })
-            print(f"[bitrix/message] status.update OK: {result}")
         except Exception as e:
             print(f"[bitrix/message] status.update FAILED: {e}")
-    else:
-        print(f"[bitrix/message] msg_id пустой — status.update не вызывается")
+
+    # Создаём активность в CRM-таймлайне (TYPE_ID=6 = SMS/исходящее)
+    adapter_label = "WhatsApp" if "_wa" in code else "MAX"
+    auth_user_id  = str(form.get("auth[user_id]", ""))
+    bindings: dict[int, dict] = {}
+    for key in form.keys():
+        m = re.match(r'bindings\[(\d+)\]\[(\w+)\]', str(key))
+        if m:
+            idx, field = int(m.group(1)), m.group(2)
+            bindings.setdefault(idx, {})[field] = str(form[key])
+    for b in bindings.values():
+        owner_type = b.get("OWNER_TYPE_ID")
+        owner_id   = b.get("OWNER_ID")
+        if not owner_type or not owner_id:
+            continue
+        try:
+            fields: dict = {
+                "OWNER_TYPE_ID":  int(owner_type),
+                "OWNER_ID":       int(owner_id),
+                "TYPE_ID":        6,
+                "SUBJECT":        f"{adapter_label}: {phone_e164}",
+                "DESCRIPTION":    text,
+                "DIRECTION":      "2",
+                "COMPLETED":      "Y",
+                "COMMUNICATIONS": [{"VALUE": phone_e164, "TYPE": "PHONE"}],
+            }
+            if auth_user_id:
+                fields["RESPONSIBLE_ID"] = auth_user_id
+            bitrix.call("crm.activity.add", {"fields": fields})
+        except Exception as e:
+            print(f"[bitrix/message] crm.activity.add failed type={owner_type} id={owner_id}: {e}")
 
     print(f"[core] msgservice → {adapter_name} phone={phone} text={text[:40]!r}")
     return {"status": "success"}

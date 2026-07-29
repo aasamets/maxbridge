@@ -47,9 +47,10 @@ app.use(express.json());
 
 // ── Состояние ─────────────────────────────────────────────────────────────────
 
-let sock        = null;
-let currentQR   = null;  // raw QR string от Baileys
-let state       = 'needs_auth';
+let sock              = null;
+let currentQR         = null;   // raw QR string от Baileys
+let state             = 'needs_auth';
+let _reconnectDelay   = 5000;   // мс, экспоненциально растёт при серии 4xx-ошибок
 
 // ── Baileys ───────────────────────────────────────────────────────────────────
 
@@ -85,8 +86,9 @@ async function connectWA() {
     }
 
     if (connection === 'open') {
-      currentQR = null;
-      state     = 'connected';
+      currentQR       = null;
+      state           = 'connected';
+      _reconnectDelay = 5000;  // сбрасываем после успешного подключения
       console.log('[WA] Подключён');
       // Авто-определение номера из сессии: sock.user.id = "79991234567:1@s.whatsapp.net"
       if (sock.user && sock.user.id) {
@@ -109,9 +111,13 @@ async function connectWA() {
       if (loggedOut) {
         // Сессия сброшена на стороне WhatsApp — чистим локальные файлы и перезапускаем
         fs.rmSync(SESSION_DIR, { recursive: true, force: true });
+        _reconnectDelay = 5000;
         setTimeout(startWA, 5000);
       } else {
-        setTimeout(connectWA, 5000);
+        // Экспоненциальный backoff: снижает число 405-ошибок при быстрых реконнектах
+        const delay     = _reconnectDelay;
+        _reconnectDelay = Math.min(Math.round(_reconnectDelay * 1.5), 60000);
+        setTimeout(connectWA, delay);
       }
     }
   });
