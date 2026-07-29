@@ -506,55 +506,6 @@ async def bitrix_message_handler(req: Request):
         except Exception as e:
             print(f"[bitrix/message] status.update FAILED: {e}")
 
-    # Создаём активность в CRM-таймлайне (TYPE_ID=4 = Email, всегда виден в ленте)
-    adapter_label = "WhatsApp" if "_wa" in code else "MAX"
-    auth_user_id  = str(form.get("auth[user_id]", ""))
-    seen_owners: set[str] = set()
-    bindings: dict[int, dict] = {}
-    for key in form.keys():
-        m = re.match(r'bindings\[(\d+)\]\[(\w+)\]', str(key))
-        if m:
-            idx, field = int(m.group(1)), m.group(2)
-            bindings.setdefault(idx, {})[field] = str(form[key])
-    for b in bindings.values():
-        owner_type = b.get("OWNER_TYPE_ID")
-        owner_id   = b.get("OWNER_ID")
-        if not owner_type or not owner_id:
-            continue
-        owner_key = f"{owner_type}:{owner_id}"
-        if owner_key in seen_owners:
-            continue
-        seen_owners.add(owner_key)
-        try:
-            _entity_type_name = {
-                "1": "CRM_LEAD", "2": "CRM_DEAL",
-                "3": "CRM_CONTACT", "4": "CRM_COMPANY",
-            }.get(str(owner_type), f"CRM_TYPE_{owner_type}")
-            fields: dict = {
-                "OWNER_TYPE_ID": int(owner_type),
-                "OWNER_ID":      int(owner_id),
-                "TYPE_ID":       1,
-                "SUBJECT":       f"[{adapter_label}] {phone_e164}",
-                "DESCRIPTION":   text,
-                "DIRECTION":     "2",
-                "COMPLETED":     "Y",
-                "COMMUNICATIONS": [{
-                    "VALUE":           phone_e164,
-                    "TYPE":            "PHONE",
-                    "ENTITY_TYPE":     _entity_type_name,
-                    "ENTITY_ID":       int(owner_id),
-                }],
-            }
-            if auth_user_id:
-                fields["RESPONSIBLE_ID"] = auth_user_id
-            result = bitrix.call("crm.activity.add", {"fields": fields})
-            if isinstance(result, int):
-                print(f"[bitrix/message] crm.activity.add OK id={result} owner={owner_key}")
-            else:
-                print(f"[bitrix/message] crm.activity.add unexpected={result} owner={owner_key}")
-        except Exception as e:
-            print(f"[bitrix/message] crm.activity.add FAILED owner={owner_key}: {e}")
-
     print(f"[core] msgservice → {adapter_name} phone={phone} text={text[:40]!r}")
     return {"status": "success"}
 
