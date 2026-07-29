@@ -190,7 +190,7 @@ async def send(req: Request):
             if user is None:
                 return JSONResponse({"error": f"Пользователь {peer_id} не найден в MAX"}, status_code=404)
             me = _client.me
-            chat_id_int = await _client.get_chat_id(me.contact.id, user.id)
+            chat_id_int = _client.get_chat_id(me.contact.id, user.id)
         else:
             chat_id_int = int(peer_id)
         await _client.send_message(chat_id_int, text)
