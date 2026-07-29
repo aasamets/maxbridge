@@ -469,6 +469,7 @@ async def bitrix_message_handler(req: Request):
     phone   = str(form.get("message_to", "")).strip()
     text    = str(form.get("message_body", "")).strip()
     msg_id  = str(form.get("message_id", ""))
+    print(f"[bitrix/message] fields={dict(form)}")
     if not phone or not text:
         return JSONResponse({"status": "error", "error": "empty phone or text"}, status_code=400)
 

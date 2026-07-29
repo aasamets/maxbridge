@@ -52,6 +52,9 @@ let currentQR         = null;   // raw QR string от Baileys
 let state             = 'needs_auth';
 let _reconnectDelay   = 5000;   // мс, экспоненциально растёт при серии 4xx-ошибок
 
+// @lid → телефон: WA шлёт contacts.upsert при миграции JID с @s.whatsapp.net на @lid
+const _lidToPhone = {};
+
 // ── Baileys ───────────────────────────────────────────────────────────────────
 
 async function connectWA() {
@@ -78,6 +81,21 @@ async function connectWA() {
   });
 
   sock.ev.on('creds.update', saveCreds);
+
+  // contacts.upsert: WA шлёт маппинг @s.whatsapp.net ↔ @lid при миграции аккаунтов.
+  // Сохраняем его чтобы @lid-сообщения шли в тот же чат Битрикса что и @s.whatsapp.net.
+  sock.ev.on('contacts.upsert', (contacts) => {
+    for (const c of contacts) {
+      if (c.lid && c.id && c.id.endsWith('@s.whatsapp.net')) {
+        const lid   = c.lid.endsWith('@lid') ? c.lid : c.lid + '@lid';
+        const phone = '+' + c.id.replace('@s.whatsapp.net', '');
+        if (!_lidToPhone[lid]) {
+          console.log(`[WA] LID resolved: ${lid} → ${phone}`);
+        }
+        _lidToPhone[lid] = phone;
+      }
+    }
+  });
 
   sock.ev.on('connection.update', ({ connection, qr, lastDisconnect }) => {
     if (qr) {
@@ -135,9 +153,16 @@ async function connectWA() {
         phone   = '+' + jid.replace('@s.whatsapp.net', '');
         peer_id = phone;
       } else {
-        // @lid: номер скрыт WhatsApp, используем LID как peer_id
-        peer_id = jid;
-        phone   = null;
+        // @lid: пробуем разрешить в номер через contacts.upsert-маппинг
+        const resolved = _lidToPhone[jid];
+        if (resolved) {
+          phone   = resolved;
+          peer_id = phone;
+        } else {
+          peer_id = jid;
+          phone   = null;
+          console.log(`[WA] @lid без маппинга: ${jid} — запомним при следующем contacts.upsert`);
+        }
       }
 
       const text     = extractText(msg.message);
