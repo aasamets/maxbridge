@@ -153,15 +153,18 @@ async function connectWA() {
         phone   = '+' + jid.replace('@s.whatsapp.net', '');
         peer_id = phone;
       } else {
-        // @lid: пробуем разрешить в номер через contacts.upsert-маппинг
-        const resolved = _lidToPhone[jid];
-        if (resolved) {
-          phone   = resolved;
+        // @lid: WA кладёт реальный JID в msg.key.senderPn — берём оттуда
+        const senderPn = msg.key.senderPn;
+        if (senderPn && senderPn.endsWith('@s.whatsapp.net')) {
+          phone   = '+' + senderPn.replace('@s.whatsapp.net', '');
           peer_id = phone;
+          _lidToPhone[jid] = phone;  // кешируем для contacts.upsert-маппинга
         } else {
-          peer_id = jid;
-          phone   = null;
-          console.log(`[WA] @lid без маппинга: ${jid} — запомним при следующем contacts.upsert`);
+          // fallback: contacts.upsert маппинг или сырой @lid
+          const resolved = _lidToPhone[jid];
+          phone   = resolved || null;
+          peer_id = resolved || jid;
+          if (!resolved) console.log(`[WA] @lid без senderPn и без маппинга: ${jid}`);
         }
       }
 
