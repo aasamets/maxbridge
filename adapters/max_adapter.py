@@ -184,10 +184,19 @@ async def send(req: Request):
         return JSONResponse({"error": f"не подключён (state={_state})"}, status_code=503)
 
     try:
-        await _client.send_message(int(peer_id), text)
+        if peer_id.startswith("+"):
+            # Телефонный номер — ищем через MAX API и открываем личный чат
+            user = await _client.search_by_phone(peer_id.lstrip("+"))
+            if user is None:
+                return JSONResponse({"error": f"Пользователь {peer_id} не найден в MAX"}, status_code=404)
+            me = _client.me
+            chat_id_int = await _client.get_chat_id(me.contact.id, user.id)
+        else:
+            chat_id_int = int(peer_id)
+        await _client.send_message(chat_id_int, text)
         return {"ok": True}
     except ValueError:
-        return JSONResponse({"error": f"некорректный chat_id: {peer_id}"}, status_code=400)
+        return JSONResponse({"error": f"некорректный peer_id: {peer_id}"}, status_code=400)
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
 

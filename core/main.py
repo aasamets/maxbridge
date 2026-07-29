@@ -473,20 +473,16 @@ async def bitrix_message_handler(req: Request):
     if not phone or not text:
         return JSONResponse({"status": "error", "error": "empty phone or text"}, status_code=400)
 
+    # Нормализуем телефон: всегда с +
+    phone_e164 = "+" + phone.lstrip("+")
+
     # Определяем адаптер по коду провайдера
     if "_wa" in code:
         adapter_name = "whatsapp"
-        peer_id      = phone  # WA-адаптер сам конвертирует в @s.whatsapp.net
+        peer_id      = phone_e164  # WA-адаптер сам конвертирует в @s.whatsapp.net
     elif "_max" in code:
         adapter_name = "max"
-        # MAX не поддерживает отправку по телефону незнакомому — ищем в chat_map
-        peer_id = store.find_peer_by_phone("max", phone)
-        if not peer_id:
-            return JSONResponse(
-                {"status": "error",
-                 "error": f"MAX: клиент с номером {phone} ещё не писал нам — не можем инициировать диалог"},
-                status_code=400,
-            )
+        peer_id      = phone_e164  # MAX-адаптер резолвит телефон через search_by_phone
     else:
         return JSONResponse({"status": "error", "error": f"unknown provider code: {code}"}, status_code=400)
 
