@@ -111,8 +111,8 @@ async def _run_client() -> None:
         # Авто-определение номера из сессии
         try:
             me = client.me
-            if me and getattr(me, "phone", None):
-                phone = f"+{me.phone}"
+            if me and me.contact.phone:
+                phone = f"+{me.contact.phone}"
                 async with httpx.AsyncClient(timeout=5) as _cli:
                     await _cli.post(f"{CORE_URL}/api/adapter_phone",
                                     json={"adapter": ADAPTER_NAME, "phone": phone})
@@ -124,7 +124,7 @@ async def _run_client() -> None:
         if not msg.text:
             return
         me = client.me
-        if me and msg.sender == me.id:
+        if me and msg.sender == me.contact.id:
             return
         try:
             await _push_incoming(client, msg)
