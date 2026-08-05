@@ -46,6 +46,24 @@
 
 ## Технические особенности (зафиксировано)
 
+### Лог сообщений (messages)
+Все входящие и исходящие пишутся в SQLite таблицу `messages` (adapter, direction in/out, phone, text, created_at).
+Доступны через `GET /api/messages?adapter=whatsapp|max|telegram&limit=200`.
+В веб-морде — секция «Лог сообщений» с вкладками по мессенджерам.
+Логируются три точки: `/incoming` (клиент → Битрикс), `/bitrix/events` (ответ из Open Line),
+`/bitrix/message` (CRM-кнопка «Сообщение»).
+
+### Коннекторы Битрикса — брендинг
+NAME в `imconnector.register` и `messageservice.sender.add` — без префикса «MaxBridge»:
+`"WhatsApp"`, `"MAX"`, `"Telegram"`. Так отображается в интерфейсе Битрикса.
+Иконки: одноцветный SVG-глиф (белый) + COLOR-фон. SIZE=80%, POSITION=center.
+Глиф WA — трубка viewBox 24×24. Глиф MAX — официальный SVG (только path, без rect-градиентов).
+
+### Потеря входящих MAX при рестарте адаптера
+pymax WebClient при реконнекте **не воспроизводит** пропущенные сообщения.
+Сообщение, пришедшее пока контейнер был оффлайн, теряется безвозвратно.
+Мониторить через ntfy-уведомления — alert при падении адаптера.
+
 ### WhatsApp @lid JID
 WA постепенно мигрирует пользователей с `@s.whatsapp.net` на `@lid` (Account ID).
 Тот же человек может слать сообщения под разными JID → без обработки создаётся дубль-лид.
@@ -87,10 +105,12 @@ Xray нужен даже когда Telegram отключён. `install.sh` сп
 ### Коннекторы Битрикс24
 После первичного OAuth: `docker compose exec core python3 install_connector.py`.
 Регистрирует `maxbridge_wa`, `maxbridge_max` (и `maxbridge_tg`) через:
-- `imconnector.*` — для Открытой линии (входящие + ответы)
-- `messageservice.sender.add` — для кнопки «Сообщение» в карточке CRM (исходящие)
+- `imconnector.register` — NAME, ICON. Повторный вызов с тем же ID обновляет название и иконку,
+  **не** удаляет привязку к Открытой линии и **не** удаляет историю диалогов.
+- `imconnector.activate` — привязывает к LINE_ID (идемпотентно).
+- `messageservice.sender.add` — для кнопки «Сообщение» в карточке CRM (исходящие).
 Без этого: `IMCONNECTOR_NO_CORRECT_PROVIDER`. Повторный запуск безопасен.
-Иконки — base64 SVG. PLACEMENT_HANDLER → `/bitrix/app` (публичная iframe-страница статуса).
+Иконки — base64 SVG-глиф (белый) поверх COLOR-фона. PLACEMENT_HANDLER → `/bitrix/app`.
 
 ### messageservice scope
 Для регистрации CRM-отправщиков нужен скоуп `messageservice` в локальном приложении Битрикс24.
@@ -186,6 +206,11 @@ Caddyfile.template      обратный прокси: HTTPS + Let's Encrypt
 **Закрыто (2026-07-29):** `crm.activity.add` создаёт «Встречу» (TYPE_ID=1 = Meeting),
 что засоряет CRM. Переписка живёт в Open Line — это правильная модель.
 Если нужна история исходящих, смотреть в Контакт-центре, а не в карточке.
+
+### ~~Лог сообщений в веб-морде~~
+
+**Закрыто (2026-08-05):** Реализован MVP — таблица `messages` в SQLite,
+логирование всех входящих и исходящих, секция в веб-морде с вкладками по мессенджерам.
 
 ### Подпись менеджера в исходящих сообщениях (WhatsApp / MAX / TG)
 
