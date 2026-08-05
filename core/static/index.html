@@ -123,6 +123,25 @@
         </div>
       </section>
 
+      <!-- Лог сообщений -->
+      <section class="section">
+        <h2 class="section-title">Лог сообщений</h2>
+        <div class="card card-bitrix">
+          <div style="padding:0">
+            <div class="msg-toolbar">
+              <div class="msg-seg" id="msg-seg">
+                <button class="msg-seg-btn active" onclick="switchMsgTab('all')" id="tab-all">Все</button>
+                <button class="msg-seg-btn" onclick="switchMsgTab('whatsapp')" id="tab-whatsapp">WhatsApp</button>
+                <button class="msg-seg-btn" onclick="switchMsgTab('max')" id="tab-max">MAX</button>
+                <button class="msg-seg-btn" onclick="switchMsgTab('telegram')" id="tab-telegram">Telegram</button>
+              </div>
+              <button class="msg-refresh-btn" onclick="loadMessages()" title="Обновить">↻</button>
+            </div>
+            <div id="msg-list" class="msg-list"></div>
+          </div>
+        </div>
+      </section>
+
       <!-- Битрикс24 -->
       <section class="section">
         <h2 class="section-title">Битрикс24</h2>
@@ -212,25 +231,6 @@
               <button class="btn btn-secondary btn-sm" onclick="testNtfy()">Тест</button>
             </div>
             <span style="display:block;margin-top:6px;font-size:12px;color:var(--text-3)">Сохраняется автоматически</span>
-          </div>
-        </div>
-      </section>
-
-      <!-- Лог сообщений -->
-      <section class="section">
-        <h2 class="section-title">Лог сообщений</h2>
-        <div class="card card-bitrix">
-          <div style="padding:0">
-            <div class="msg-toolbar">
-              <div class="msg-seg" id="msg-seg">
-                <button class="msg-seg-btn active" onclick="switchMsgTab('all')" id="tab-all">Все</button>
-                <button class="msg-seg-btn" onclick="switchMsgTab('whatsapp')" id="tab-whatsapp">WhatsApp</button>
-                <button class="msg-seg-btn" onclick="switchMsgTab('max')" id="tab-max">MAX</button>
-                <button class="msg-seg-btn" onclick="switchMsgTab('telegram')" id="tab-telegram">Telegram</button>
-              </div>
-              <button class="msg-refresh-btn" onclick="loadMessages()" title="Обновить">↻</button>
-            </div>
-            <div id="msg-list" class="msg-list"></div>
           </div>
         </div>
       </section>
