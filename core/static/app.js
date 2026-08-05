@@ -533,12 +533,10 @@ async function testNtfy() {
 
 let _msgAdapter = '';  // '' = все
 
-const _ADAPTER_LABELS = { whatsapp: 'WA', max: 'MAX', telegram: 'TG' };
-
 function switchMsgTab(adapter) {
   _msgAdapter = adapter === 'all' ? '' : adapter;
-  document.querySelectorAll('.msg-tab').forEach(b => b.classList.remove('active'));
-  document.getElementById('tab-' + (adapter === '' ? 'all' : adapter))?.classList.add('active');
+  document.querySelectorAll('.msg-seg-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + adapter)?.classList.add('active');
   loadMessages();
 }
 
@@ -549,31 +547,42 @@ function _fmtTime(ts) {
   const isToday = d.toDateString() === today.toDateString();
   const time = pad(d.getHours()) + ':' + pad(d.getMinutes());
   if (isToday) return time;
-  return pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + ' ' + time;
+  return pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '\n' + time;
 }
+
+const _CHIP = {
+  whatsapp: ['WA',  'msg-chip-wa'],
+  max:      ['MAX', 'msg-chip-max'],
+  telegram: ['TG',  'msg-chip-tg'],
+};
 
 async function loadMessages() {
   const list = document.getElementById('msg-list');
   if (!list) return;
+  list.innerHTML = '<div class="msg-loading"><span>Загрузка...</span></div>';
   try {
     const url = '/api/messages' + (_msgAdapter ? '?adapter=' + _msgAdapter : '');
     const { messages } = await fetch(url).then(r => r.json());
     if (!messages.length) {
-      list.innerHTML = '<div class="msg-empty">Сообщений пока нет</div>';
+      list.innerHTML = '<div class="msg-empty"><div class="msg-empty-icon">💬</div>Сообщений пока нет</div>';
       return;
     }
     list.innerHTML = messages.map(m => {
-      const dirLabel = m.direction === 'in' ? '← вх' : '→ исх';
-      const dirClass = m.direction === 'in' ? 'msg-dir-in' : 'msg-dir-out';
-      const adapter  = _ADAPTER_LABELS[m.adapter] || m.adapter;
-      const phone    = m.phone || '—';
-      const text     = (m.text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const isIn     = m.direction === 'in';
+      const dirArrow = isIn ? '↓' : '↑';
+      const dirClass = isIn ? 'msg-dir-in' : 'msg-dir-out';
+      const [chipLabel, chipClass] = _CHIP[m.adapter] || [m.adapter, 'msg-chip-?'];
+      const phone    = (m.phone || '—').replace(/</g, '&lt;');
+      const text     = (m.text  || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const time     = _fmtTime(m.created_at).replace('\n', '<br>');
       return `<div class="msg-row">
-        <span class="${dirClass}">${dirLabel}</span>
-        <span class="msg-adapter">${adapter}</span>
-        <span class="msg-phone">${phone}</span>
-        <span class="msg-text">${text}</span>
-        <span class="msg-time">${_fmtTime(m.created_at)}</span>
+        <div class="msg-dir-badge ${dirClass}">${dirArrow}</div>
+        <span class="msg-chip ${chipClass}">${chipLabel}</span>
+        <div class="msg-body">
+          <div class="msg-phone">${phone}</div>
+          <div class="msg-text">${text}</div>
+        </div>
+        <div class="msg-time">${time}</div>
       </div>`;
     }).join('');
   } catch (e) {
