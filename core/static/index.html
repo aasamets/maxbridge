@@ -216,6 +216,23 @@
         </div>
       </section>
 
+      <!-- Лог сообщений -->
+      <section class="section">
+        <h2 class="section-title">Лог сообщений</h2>
+        <div class="card card-bitrix">
+          <div class="card-body" style="padding:0">
+            <div class="msg-tabs" id="msg-tabs">
+              <button class="msg-tab active" onclick="switchMsgTab('all')" id="tab-all">Все</button>
+              <button class="msg-tab" onclick="switchMsgTab('whatsapp')" id="tab-whatsapp">WhatsApp</button>
+              <button class="msg-tab" onclick="switchMsgTab('max')" id="tab-max">MAX</button>
+              <button class="msg-tab" onclick="switchMsgTab('telegram')" id="tab-telegram">Telegram</button>
+              <button class="msg-tab-refresh btn-ghost" onclick="loadMessages()" title="Обновить">↻</button>
+            </div>
+            <div id="msg-list" class="msg-list"><div class="spinner" style="padding:24px">Загрузка...</div></div>
+          </div>
+        </div>
+      </section>
+
       <!-- Настройки (скрытые по умолчанию) -->
       <section class="section settings-section" id="settings-section" style="display:none">
         <h2 class="section-title">Настройки</h2>

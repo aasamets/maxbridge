@@ -26,30 +26,50 @@ LINE_ID    = int(os.environ["B24_LINE_ID"])
 PUBLIC_URL = os.environ["PUBLIC_URL"].rstrip("/")
 
 
-def _svg(path_d: str) -> str:
-    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
-           f'<path fill="#fff" d="{path_d}"/></svg>')
+def _b64svg(svg: str) -> str:
     return "data:image/svg+xml;base64," + base64.b64encode(svg.encode()).decode()
 
 
-# Иконки мессенджеров (упрощённые силуэты)
-_ICON_WA = _svg(
-    "M16 3C9.4 3 4 8.4 4 15c0 2.4.7 4.6 1.8 6.5L4 29l7.7-2c1.8.9 3.8 1.4 6 1.4 "
-    "6.6 0 12-5.4 12-12S22.6 3 16 3zm6 17.4c-.3.8-1.6 1.5-2.2 1.6-.6.1-1.1.3-3.7-.8"
-    "-3.1-1.3-5.1-4.5-5.3-4.7-.2-.2-1.2-1.6-1.2-3.1s.8-2.2 1.1-2.5c.3-.3.6-.4.8-.4h"
-    ".6c.2 0 .4.1.6.6l.9 2.2c.1.3.2.6 0 1s-.3.6-.6.9c-.3.3-.5.6-.2 1.2.3.5 1.4 2.3 "
-    "3 3.7 2.1 1.8 3.8 2.4 4.3 2.6.5.3.8.2 1.1-.1.3-.4 1.3-1.6 1.6-2.1.3-.5.7-.4 "
-    "1.2-.2.5.2 3.1 1.5 3.6 1.7.5.3.8.4 1 .6.1.2.1 1.2-.2 2z"
+# WhatsApp: чистый белый глиф трубки в viewBox 24×24, без собственного фона.
+# Битрикс кладёт глиф поверх COLOR-фона (#25D366), SIZE=80%, center.
+_ICON_WA = _b64svg(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+    '<path fill="#fff" d="M12 2C6.48 2 2 6.48 2 12c0 1.85.5 3.58 1.37 5.07L2 22l5.08-1.33'
+    'A9.93 9.93 0 0 0 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm5.16 13.73c-.22.62-1.3 1.18'
+    '-1.79 1.25-.46.07-.87.22-2.9-.61-2.43-1.01-3.99-3.51-4.11-3.67-.12-.16-.97-1.28-.97'
+    '-2.45 0-1.16.61-1.73.83-1.97.22-.23.48-.29.64-.29h.46c.15 0 .35.06.54.51l.77 1.82'
+    'c.08.19.04.41-.09.61l-.46.67c-.15.22-.31.46-.13.9.18.44 1.1 1.81 2.37 2.93 1.63 1.42'
+    ' 3 1.87 3.41 2.08.41.21.65.18.89-.1.24-.28 1.01-1.19 1.28-1.6.27-.41.54-.34.91-.2'
+    '.37.14 2.34 1.1 2.74 1.3.4.21.67.31.76.48.1.17.1.97-.12 1.59z"/>'
+    '</svg>'
 )
-_ICON_TG = _svg(
-    "M27.6 5.3L3.2 14.6c-1.7.7-1.7 1.7-.3 2.1l6.2 1.9 14.4-9.1c.7-.4 1.3-.2.8.3"
-    "L11.4 19.8l-.4 6.5c.6 0 .8-.3 1.1-.5l2.7-2.6 5.5 4.1c1 .6 1.7.3 2-.9l3.6-17"
-    "c.3-1.5-.6-2.2-1.8-1.5z"
+
+# Telegram: белый глиф самолётика в viewBox 24×24.
+_ICON_TG = _b64svg(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+    '<path fill="#fff" d="M20.665 3.717l-17.73 6.837c-1.21.486-1.203 1.161-.222 1.462'
+    'l4.552 1.42 10.532-6.645c.498-.303.953-.14.579.192L9.116 16.93l-.396 4.602'
+    'c.58 0 .833-.25.997-.408l2.396-2.32 4.985 3.682c.92.507 1.58.245 1.81-.852'
+    'l3.279-15.44c.329-1.316-.498-1.912-1.522-1.477z"/>'
+    '</svg>'
 )
-_ICON_MAX = _svg(
-    "M4 27V7l5.5 7L16 7l6.5 7L28 7v20h-3V15l-3.5 4.5L16 13l-5.5 6.5L7 15v12z"
+
+# MAX: официальный SVG логотип адаптирован для модели Битрикса.
+# Оригинал имеет собственный цветной фон (rect с градиентом) — убираем rect,
+# оставляем только белый path (буква O/кружок). Битрикс добавит фон через COLOR.
+_ICON_MAX = _b64svg(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000">'
+    '<path fill="#fff" fill-rule="evenodd" d="M508.211 878.328c-75.007 0-109.864-10.95'
+    '-170.453-54.75-38.325 49.275-159.686 87.783-164.979 21.9 0-49.456-10.95-91.248'
+    '-23.36-136.873-14.782-56.21-31.572-118.807-31.572-209.508 0-216.626 177.754'
+    '-379.597 388.357-379.597 210.785 0 375.947 171.001 375.947 381.604.707 207.346'
+    '-166.595 376.118-373.94 377.224m3.103-571.585c-102.564-5.292-182.499 65.7'
+    '-200.201 177.024-14.6 92.162 11.315 204.398 33.397 210.238 10.585 2.555'
+    ' 37.23-18.98 53.837-35.587a189.8 189.8 0 0 0 92.71 33.032c106.273 5.112'
+    ' 197.08-75.794 204.215-181.95 4.154-106.382-77.67-196.486-183.958-202.574Z"'
+    ' clip-rule="evenodd"/>'
+    '</svg>'
 )
-_ICON_FALLBACK = "data:image/svg+xml;charset=US-ASCII,<svg xmlns='http://www.w3.org/2000/svg'/>"
 
 _CONNECTORS = [
     {
@@ -100,14 +120,14 @@ def register_one(suffix: str, name: str, color: str, icon: str) -> None:
 
     bitrix.call("imconnector.register", {
         "ID":   connector_id,
-        "NAME": f"MaxBridge {name}",
+        "NAME": name,
         "ICON": {
             "DATA_IMAGE": icon, "COLOR": color,
-            "SIZE": "100%", "POSITION": "center",
+            "SIZE": "80%", "POSITION": "center",
         },
         "ICON_DISABLED": {
             "DATA_IMAGE": icon, "COLOR": "#99adb3",
-            "SIZE": "100%", "POSITION": "center",
+            "SIZE": "80%", "POSITION": "center",
         },
         "PLACEMENT_HANDLER": f"{PUBLIC_URL}/bitrix/app",
     })
@@ -134,7 +154,7 @@ def register_one(suffix: str, name: str, color: str, icon: str) -> None:
         bitrix.call("imconnector.connector.data.set", {
             "CONNECTOR": connector_id,
             "LINE":      LINE_ID,
-            "DATA":      {"id": connector_id, "name": f"MaxBridge {name}", "url": url},
+            "DATA":      {"id": connector_id, "name": name, "url": url},
         })
         if url != PUBLIC_URL:
             print(f"    Ссылка виджета: {url}")
@@ -152,7 +172,7 @@ def register_message_sender(suffix: str, name: str) -> None:
         bitrix.call("messageservice.sender.add", {
             "CODE":    code,
             "TYPE":    "SMS",
-            "NAME":    f"MaxBridge {name}",
+            "NAME":    name,
             "HANDLER": f"{PUBLIC_URL}/bitrix/message",
         })
         print(f"  ✔ MessageService {name} зарегистрирован")

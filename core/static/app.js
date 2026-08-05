@@ -529,6 +529,58 @@ async function testNtfy() {
   }
 }
 
+// ── Лог сообщений ─────────────────────────────────────────────────────────────
+
+let _msgAdapter = '';  // '' = все
+
+const _ADAPTER_LABELS = { whatsapp: 'WA', max: 'MAX', telegram: 'TG' };
+
+function switchMsgTab(adapter) {
+  _msgAdapter = adapter === 'all' ? '' : adapter;
+  document.querySelectorAll('.msg-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + (adapter === '' ? 'all' : adapter))?.classList.add('active');
+  loadMessages();
+}
+
+function _fmtTime(ts) {
+  const d = new Date(ts * 1000);
+  const pad = n => String(n).padStart(2, '0');
+  const today = new Date();
+  const isToday = d.toDateString() === today.toDateString();
+  const time = pad(d.getHours()) + ':' + pad(d.getMinutes());
+  if (isToday) return time;
+  return pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + ' ' + time;
+}
+
+async function loadMessages() {
+  const list = document.getElementById('msg-list');
+  if (!list) return;
+  try {
+    const url = '/api/messages' + (_msgAdapter ? '?adapter=' + _msgAdapter : '');
+    const { messages } = await fetch(url).then(r => r.json());
+    if (!messages.length) {
+      list.innerHTML = '<div class="msg-empty">Сообщений пока нет</div>';
+      return;
+    }
+    list.innerHTML = messages.map(m => {
+      const dirLabel = m.direction === 'in' ? '← вх' : '→ исх';
+      const dirClass = m.direction === 'in' ? 'msg-dir-in' : 'msg-dir-out';
+      const adapter  = _ADAPTER_LABELS[m.adapter] || m.adapter;
+      const phone    = m.phone || '—';
+      const text     = (m.text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return `<div class="msg-row">
+        <span class="${dirClass}">${dirLabel}</span>
+        <span class="msg-adapter">${adapter}</span>
+        <span class="msg-phone">${phone}</span>
+        <span class="msg-text">${text}</span>
+        <span class="msg-time">${_fmtTime(m.created_at)}</span>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    list.innerHTML = '<div class="msg-empty">Ошибка загрузки</div>';
+  }
+}
+
 // ── Инициализация ─────────────────────────────────────────────────────────────
 
 async function loadPhones() {
@@ -542,3 +594,4 @@ connectWS();
 checkB24Status();
 loadPhones();
 loadNtfy();
+loadMessages();

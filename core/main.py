@@ -397,6 +397,12 @@ async def test_ntfy():
         return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=502)
 
 
+@app.get("/api/messages")
+async def get_messages(adapter: str = "", limit: int = 200):
+    rows = store.get_messages(adapter or None, min(limit, 500))
+    return {"messages": rows}
+
+
 @app.get("/api/phones")
 async def get_phones():
     result: dict[str, str] = {}
@@ -506,6 +512,7 @@ async def bitrix_message_handler(req: Request):
         except Exception as e:
             print(f"[bitrix/message] status.update FAILED: {e}")
 
+    store.log_message(adapter_name, "out", phone_e164, text)
     print(f"[core] msgservice → {adapter_name} phone={phone} text={text[:40]!r}")
     return {"status": "success"}
 
@@ -526,17 +533,20 @@ async def incoming(req: Request):
     )
     connector = bitrix.connector_id_for(adapter)
 
+    text = body.get("text", "")
+    phone = body.get("phone")
     bitrix.send_incoming_message(
         connector_id=connector,
         line_id=LINE_ID,
         external_chat_id=external_chat_id,
         peer_id=peer_id,
-        text=body.get("text", ""),
+        text=text,
         msg_external_id=msg_id,
         peer_name=body.get("name"),
-        peer_phone=body.get("phone"),
+        peer_phone=phone,
         files=body.get("files"),
     )
+    store.log_message(adapter, "in", phone or peer_id, text)
     return {"ok": True, "external_chat_id": external_chat_id}
 
 
@@ -574,10 +584,16 @@ async def bitrix_events(req: Request):
         if not adapter_url:
             continue
 
+        clean_text = _strip_bb(text)
         async with httpx.AsyncClient(timeout=30) as cli:
             await cli.post(f"{adapter_url}/send",
-                           json={"peer_id": target["peer_id"], "text": _strip_bb(text)})
+                           json={"peer_id": target["peer_id"], "text": clean_text})
 
+        store.log_message(
+            target["adapter"], "out",
+            target.get("peer_phone") or target["peer_id"],
+            clean_text,
+        )
         connector = bitrix.connector_id_for(target["adapter"])
         try:
             bitrix.confirm_delivery(connector, LINE_ID, external_chat_id, b24_msg_id)

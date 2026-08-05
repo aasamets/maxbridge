@@ -1,9 +1,10 @@
 """
-SQLite-хранилище. Четыре таблицы:
-  chat_map     — внешний chat_id ↔ адаптер + peer
-  seen_msg     — дедупликация входящих
-  kv           — OAuth-токены Битрикса и прочие пары ключ/значение
+SQLite-хранилище. Пять таблиц:
+  chat_map      — внешний chat_id ↔ адаптер + peer
+  seen_msg      — дедупликация входящих
+  kv            — OAuth-токены Битрикса и прочие пары ключ/значение
   adapter_state — закешированное состояние каждого адаптера (для UI)
+  messages      — лог всех входящих и исходящих сообщений (для веб-морды)
 """
 
 import sqlite3
@@ -49,6 +50,15 @@ def init() -> None:
                 state      TEXT NOT NULL DEFAULT 'unknown',
                 updated_at INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS messages (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                adapter    TEXT NOT NULL,
+                direction  TEXT NOT NULL CHECK(direction IN ('in','out')),
+                phone      TEXT,
+                text       TEXT,
+                created_at INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS messages_adapter_ts ON messages(adapter, created_at DESC);
         """)
 
 
@@ -122,6 +132,29 @@ def find_peer_by_phone(adapter: str, phone: str) -> str | None:
             (adapter, normalized),
         ).fetchone()
     return row["peer_id"] if row else None
+
+
+def log_message(adapter: str, direction: str, phone: str | None, text: str | None) -> None:
+    with _lock, _conn() as c:
+        c.execute(
+            "INSERT INTO messages (adapter, direction, phone, text, created_at) VALUES (?,?,?,?,?)",
+            (adapter, direction, phone, (text or "")[:2000], int(time.time())),
+        )
+
+
+def get_messages(adapter: str | None = None, limit: int = 200) -> list[dict]:
+    with _lock, _conn() as c:
+        if adapter:
+            rows = c.execute(
+                "SELECT * FROM messages WHERE adapter=? ORDER BY created_at DESC LIMIT ?",
+                (adapter, limit),
+            ).fetchall()
+        else:
+            rows = c.execute(
+                "SELECT * FROM messages ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def get_adapter_states() -> dict[str, str]:
